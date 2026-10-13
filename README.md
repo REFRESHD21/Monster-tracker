@@ -5,16 +5,18 @@ Installs as **Monster Tracker Plus** alongside the original app. Export a JSON b
 A native Android stock and sales ledger with local receipt photos and optional Stripe Tap to Pay.
 
 - Cash and manual card entries, stock purchases/adjustments, history and JSON backups work offline.
-- Attach receipt photos through History > transaction > Receipt photos. Images are copied into the app and included in full JSON backups; CSV contains transaction data only.
+- Take live receipt photos or import them through History > transaction > Receipt photos. Images are copied into the app and included in full JSON backups; CSV contains transaction data only.
 - Stripe Terminal 6.0.0 provides native Tap to Pay. A merchant-owned Stripe account and authenticated HTTPS payment backend are required. The included `backend/` uses durable SQLite and idempotent PaymentIntents. Test payments do not modify stock or revenue.
 - Real payments require a compatible physical Android 13+ phone. Samsung Galaxy A16 5G is on Stripe's device list; actual compatibility depends on NFC, security updates and device settings.
-- Version 1 databases upgrade without clearing existing history. Version 1 JSON backups remain readable.
+- Version 1/2/3 databases migrate safely to version 4. Legacy JSON backups remain readable.
+- Stock > Supplier purchases supports reviewed multipacks, expenses and original JPG/PNG/PDF receipts with bundled offline OCR. Confirm invoices first, then confirm actual goods received separately; partial deliveries are supported.
+- Stock > Flavours supports offline barcode assignments, per-flavour stock counts, minimum/target alerts, preferred suppliers and shopping lists. Current legacy stock remains explicitly unassigned until you identify its flavour with an audited stock transfer.
 
 See [STRIPE_SETUP.md](STRIPE_SETUP.md) for installation, receipt backups, account/backend setup and recovery. No live account, backend deployment or physical Tap to Pay charge has been configured here.
 
 ## Build
 
-GitHub Actions runs host accounting/backup checks, payment-backend tests, Android unit tests, database/receipt/migration tests in an offline emulator, and APK package/signature/manifest verification. It exports a non-debuggable `Monster-Tracker-1.1.apk`.
+GitHub Actions runs host accounting/backup checks, payment-backend tests, Android unit tests, database/receipt/migration tests in an offline emulator, and APK package/signature/manifest verification. It exports a non-debuggable `Monster-Tracker-1.3.apk`.
 
 Locally with JDK 17, Android SDK and Gradle 8.9:
 
@@ -34,3 +36,11 @@ Transaction history is append-only. Normal corrections add undo events; Stripe-p
 Receipts and records remain private on the phone. Backups are unencrypted and should be kept in a safe separate location. Stripe pairing credentials are encrypted in Android Keystore and excluded from backups. Never put Stripe secret keys in the APK or GitHub.
 
 The original pre-Android ledger and README are preserved under `provenance/`. Earlier build reports in `reports/` describe the source conversion; current CI reports are available as workflow artifacts.
+
+## Live receipt photos
+
+In **Stock → Supplier purchases, receipts & expenses → New supplier purchase** (or **Record operating expense**), tap **Take live receipt photo**. Allow camera access, point the rear camera at the whole receipt, tap to focus, and tap **Take receipt photo**. Tap **Preview attached photo** to check it, or capture again to replace the unsaved attachment. Tap **Read attached receipt with offline OCR**, review the suggestions, and correct supplier/date, quantities, flavours, costs and GST before **Confirm document**. Saving a receipt never confirms delivery or adds stock automatically.
+
+After the goods arrive, open the saved purchase and use **Confirm received goods** with the actual received quantity. The original image remains in private SQLite and is included in the full JSON backup. Barcode/OCR models are bundled with the APK and need no download on first use. Actual camera quality, focus and retail scanning need verification on your phone; see [PHASES.md](PHASES.md) for current build/test status.
+
+To update, export a full JSON backup first, then install the new APK over the existing **Monster Tracker Plus** using the same signing key. Do not uninstall Plus to resolve an installation error: uninstalling erases its database. If signing keys differ, keep the old installation and backup while arranging migration. Backup files do not survive phone loss unless copied elsewhere.
