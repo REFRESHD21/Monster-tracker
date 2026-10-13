@@ -39,6 +39,7 @@ PASS receipt hashes retain original bytes and reject tampering
 PASS version-2 full backup keeps purchase and original receipt
 PASS backup rejects missing receipt and duplicate invoice
 PASS v1 backups remain readable without deleting new domain
+PASS undo/re-receive never allocates an extra rounding cent
 PURCHASE CHECKS PASSED
 test_duplicate_correction_and_unknown_reference_rejected (__main__.LocalDatabaseTests.test_duplicate_correction_and_unknown_reference_rejected) ... ok
 test_history_cannot_be_deleted_or_rewritten (__main__.LocalDatabaseTests.test_history_cannot_be_deleted_or_rewritten) ... ok
@@ -66,7 +67,7 @@ test_transaction_failure_is_atomic (__main__.MigrationTests.test_transaction_fai
 test_unique_id_enforced_and_duplicate_rollback (__main__.MigrationTests.test_unique_id_enforced_and_duplicate_rollback) ... ok
 
 ----------------------------------------------------------------------
-Ran 24 tests in 0.034s
+Ran 24 tests in 0.035s
 
 OK
 PASS native Java totals match the existing tracker in 100 sale/fee/restock/missing/undo scenarios.

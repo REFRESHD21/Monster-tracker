@@ -14,7 +14,7 @@
 
 ## Validation
 
-63 host checks passed: 29 original Java checks, nine purchase/receipt/backup checks, 24 SQLite checks (including v1/v2 migrations), and original-ledger parity across 100 scenarios. Five Android instrumentation checks were added for genuine v1 migration, partial deliveries/idempotency, duplicate attachments, expense undo, and full backup/restore, making 20 in total. The workflow checks all 20 before APK publication. Camera/document-picker behavior requires phone testing.
+64 host checks passed: 29 original Java checks, ten purchase/receipt/backup checks, 24 SQLite checks (including v1/v2 migrations), and original-ledger parity across 100 scenarios. Six Android instrumentation checks were added for genuine v1 migration, partial deliveries/idempotency, duplicate attachments, expense undo, and full backup/restore, making 21 in total. The workflow checks all 21 before APK publication. Camera/document-picker behavior requires phone testing.
 
 ## Remaining phases
 
@@ -22,3 +22,5 @@
 3. Consistent historical costing, profit and GST registration/tax treatment settings, period/flavour reports and CSV/PDF exports.
 4. Scheduled/encrypted backups, restore/recovery improvements and optional cloud destination.
 5. Stripe Terminal test integration, secure server authentication/connection tokens, verified payments/refunds and reconciliation. No payment processing or offline-card capability is claimed in Phase 1. Current Australian/device/account requirements will be checked before implementation; secrets will never be bundled into the APK.
+
+Phase 1 integration preserves the current Plus application ID/signing path, original photo receipts, encrypted payment settings and Stripe checkout/backend. A genuine v2 upgrade test additionally verifies photo bytes and pending payment persistence. Partial delivery cost allocation was hardened for undo/re-receive rounding: it allocates the remaining actual invoice cost, so all received costs still sum exactly to the invoice line.

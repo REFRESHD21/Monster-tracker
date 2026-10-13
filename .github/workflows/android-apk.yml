@@ -127,7 +127,7 @@ jobs:
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w au.monster.tracker.plus.test/au.monster.tracker.DatabaseTestRunner | tee reports/device-tests.txt
-            grep -F 'DEVICE RESULTS: 20 passed, 0 failed.' reports/device-tests.txt
+            grep -F 'DEVICE RESULTS: 21 passed, 0 failed.' reports/device-tests.txt
 
       - name: Verify and package the installable APK
         id: verified
