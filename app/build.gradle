@@ -1,0 +1,34 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'au.monster.tracker'
+    compileSdk 35
+    defaultConfig {
+        applicationId 'au.monster.tracker'
+        minSdk 26
+        targetSdk 35
+        versionCode 1
+        versionName '1.0.0'
+        testInstrumentationRunner 'au.monster.tracker.DatabaseTestRunner'
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    signingConfigs {
+        release {
+            if (System.getenv('MONSTER_KEYSTORE')) {
+                storeFile file(System.getenv('MONSTER_KEYSTORE'))
+                storePassword System.getenv('MONSTER_STORE_PASSWORD')
+                keyAlias System.getenv('MONSTER_KEY_ALIAS')
+                keyPassword System.getenv('MONSTER_KEY_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        debug { debuggable true }
+        release {
+            minifyEnabled false
+            if (System.getenv('MONSTER_KEYSTORE')) signingConfig signingConfigs.release
+        }
+    }
+}
+
+// Test-only dependency; it is not packaged into the offline app.
+dependencies { testImplementation 'junit:junit:4.13.2' }

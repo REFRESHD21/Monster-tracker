@@ -1,0 +1,44 @@
+warning: [options] system modules path not set in conjunction with -source 17
+1 warning
+PASS opening inventory and money
+PASS opening dates remain unknown
+PASS single cash stock deduction
+PASS two-can deal and card fee
+PASS purchase plus revenue calculation
+PASS missing damaged and lost are not sales
+PASS prevent overselling and malformed deal
+PASS cash fees and excessive card fees rejected
+PASS undo retains original and reverses all effects
+PASS undo opening missing restores four
+PASS duplicate undo and undo-of-undo rejected
+PASS undo consumed restock cannot make stock negative
+PASS unique transaction IDs
+PASS prices change without modifying old sale
+PASS exact cents and Perth timezone
+PASS JSON backup roundtrip includes notes prices and unknown dates
+PASS restore to replacement phone skips opening seeds
+PASS restore conflicting IDs rejects without changing records
+PASS restore incompatible independent stock histories rejected
+PASS corrupted checksum and truncated backup rejected
+PASS incorrect version and currency rejected
+PASS opening mutation and missing opening rejected
+PASS invalid backup timestamp and amounts rejected even with checksum
+PASS duplicate JSON keys and invalid numeric syntax rejected
+PASS CSV retains correction IDs and escapes notes
+PASS large backup validation uses bounded iterative state
+CORE RESULTS: 26 passed, 0 failed.
+test_duplicate_correction_and_unknown_reference_rejected (__main__.LocalDatabaseTests.test_duplicate_correction_and_unknown_reference_rejected) ... ok
+test_history_cannot_be_deleted_or_rewritten (__main__.LocalDatabaseTests.test_history_cannot_be_deleted_or_rewritten) ... ok
+test_json_restore_records_match (__main__.LocalDatabaseTests.test_json_restore_records_match) ... ok
+test_manifest_no_network_or_remote_permissions (__main__.LocalDatabaseTests.test_manifest_no_network_or_remote_permissions) ... ok
+test_opening_seed_and_unknown_dates (__main__.LocalDatabaseTests.test_opening_seed_and_unknown_dates) ... ok
+test_pending_command_persists_after_termination (__main__.LocalDatabaseTests.test_pending_command_persists_after_termination) ... ok
+test_persistence_and_restart_no_network (__main__.LocalDatabaseTests.test_persistence_and_restart_no_network) ... ok
+test_transaction_failure_is_atomic (__main__.LocalDatabaseTests.test_transaction_failure_is_atomic) ... ok
+test_unique_id_enforced_and_duplicate_rollback (__main__.LocalDatabaseTests.test_unique_id_enforced_and_duplicate_rollback) ... ok
+
+----------------------------------------------------------------------
+Ran 9 tests in 0.011s
+
+OK
+PASS native Java totals match the existing tracker in 100 sale/fee/restock/missing/undo scenarios.
