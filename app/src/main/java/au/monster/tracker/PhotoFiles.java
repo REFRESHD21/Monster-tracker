@@ -29,5 +29,6 @@ public final class PhotoFiles {
             throw new IOException("Photo is too large after compression. Choose a smaller photo.");
         }finally{bitmap.recycle();}
     }
+    public static void validateStored(byte[] bytes){BitmapFactory.Options bounds=new BitmapFactory.Options();bounds.inJustDecodeBounds=true;BitmapFactory.decodeByteArray(bytes,0,bytes.length,bounds);if(bounds.outWidth<=0||bounds.outHeight<=0||bounds.outWidth>1600||bounds.outHeight>1600)throw new IllegalArgumentException("Invalid receipt image or image dimensions. Nothing was imported.");}
     private PhotoFiles(){}
 }

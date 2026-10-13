@@ -7,11 +7,14 @@ import android.widget.*;
 import java.util.*;
 import java.util.concurrent.*;
 import com.stripe.stripeterminal.Terminal;
+import com.stripe.stripeterminal.log.LogLevel;
+import com.stripe.stripeterminal.external.models.LocaleConfig;
 import com.stripe.stripeterminal.external.callable.*;
 import com.stripe.stripeterminal.external.models.*;
 
 /** A checkout is durable before networking. Every retry retrieves the same server PaymentIntent. */
 public final class StripeActivity extends Activity {
+    private static final ExecutorService TOKEN_NETWORK=Executors.newSingleThreadExecutor();
     private final ExecutorService network=Executors.newSingleThreadExecutor();
     private Store store;private Ledger.Event sale;private PaymentSettings settings;private PaymentClient api;
     private TextView status;private Button retry,cancel,close;private boolean working=false,finished=false;private Cancelable operation;
@@ -52,11 +55,12 @@ public final class StripeActivity extends Activity {
     @Override public void onRequestPermissionsResult(int request,String[] permissions,int[] grants){super.onRequestPermissionsResult(request,permissions,grants);if(request==71){if(checkSelfPermission(android.Manifest.permission.ACCESS_FINE_LOCATION)==PackageManager.PERMISSION_GRANTED)checkAndPay();else show("Precise location was not granted. You can cancel this unpaid payment or grant access in Android Settings.");}}
     private void initialize()throws Exception{
         if(Terminal.isInitialized())return;
-        ConnectionTokenProvider provider=callback->network.execute(()->{try{var response=api.post("/connection_token",new LinkedHashMap<>());callback.onSuccess((String)response.get("secret"));}catch(Exception e){callback.onFailure(new ConnectionTokenException("Could not connect to the payment backend.",e));}});
+        PaymentClient tokenApi=new PaymentClient(new PaymentSettings(getApplicationContext()));
+        ConnectionTokenProvider provider=callback->TOKEN_NETWORK.execute(()->{try{var response=tokenApi.post("/connection_token",new LinkedHashMap<>());callback.onSuccess((String)response.get("secret"));}catch(Exception e){callback.onFailure(new ConnectionTokenException("Could not connect to the payment backend.",e));}});
         Terminal.init(getApplicationContext(),LogLevel.ERROR,provider,new TerminalListener(){},null,LocaleConfig.CardLanguagePreferenceIfAvailable.INSTANCE);
     }
     private void connectAndProcess(String secret,String location)throws Exception{
-        initialize();if(Terminal.getInstance().getConnectedReader()!=null){process(secret);return;}
+        initialize();if(Terminal.getInstance().getConnectedReader()!=null){operation=null;Terminal.getInstance().disconnectReader(new Callback(){public void onSuccess(){runOnUiThread(()->{try{Terminal.getInstance().clearCachedCredentials();connectAndProcess(secret,location);}catch(Exception e){fail(e);}});}public void onFailure(TerminalException e){runOnUiThread(()->fail(e));}});return;}Terminal.getInstance().clearCachedCredentials();
         show("Connecting to "+(settings.live()?"Tap to Pay":"Stripe's simulated reader")+"…");
         var config=new EasyConnectConfiguration.TapToPayEasyConnectConfiguration(new DiscoveryConfiguration.TapToPayDiscoveryConfiguration(!settings.live()),new ConnectionConfiguration.TapToPayConnectionConfiguration(new TapUseCase.Pay(location),true,new TapToPayReaderListener(){}));
         operation=Terminal.getInstance().easyConnect(config,new ReaderCallback(){public void onSuccess(Reader reader){runOnUiThread(()->process(secret));}public void onFailure(TerminalException e){runOnUiThread(()->fail(e));}});
