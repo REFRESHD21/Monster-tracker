@@ -27,6 +27,16 @@ PASS duplicate JSON keys and invalid numeric syntax rejected
 PASS CSV retains correction IDs and escapes notes
 PASS large backup validation uses bounded iterative state
 CORE RESULTS: 26 passed, 0 failed.
+PASS multipacks validate without adding inventory
+PASS partial receipt cost rounds cumulatively and fully
+PASS invalid purchase totals quantities and GST rejected
+PASS expense has no stock lines
+PASS invoice fingerprint normalizes supplier and reference
+PASS receipt hashes retain original bytes and reject tampering
+PASS version-2 full backup keeps purchase and original receipt
+PASS backup rejects missing receipt and duplicate invoice
+PASS v1 backups remain readable without deleting new domain
+PURCHASE CHECKS PASSED
 test_duplicate_correction_and_unknown_reference_rejected (__main__.LocalDatabaseTests.test_duplicate_correction_and_unknown_reference_rejected) ... ok
 test_history_cannot_be_deleted_or_rewritten (__main__.LocalDatabaseTests.test_history_cannot_be_deleted_or_rewritten) ... ok
 test_json_restore_records_match (__main__.LocalDatabaseTests.test_json_restore_records_match) ... ok
@@ -36,9 +46,24 @@ test_pending_command_persists_after_termination (__main__.LocalDatabaseTests.tes
 test_persistence_and_restart_no_network (__main__.LocalDatabaseTests.test_persistence_and_restart_no_network) ... ok
 test_transaction_failure_is_atomic (__main__.LocalDatabaseTests.test_transaction_failure_is_atomic) ... ok
 test_unique_id_enforced_and_duplicate_rollback (__main__.LocalDatabaseTests.test_unique_id_enforced_and_duplicate_rollback) ... ok
+test_delivery_commit_failure_rolls_back_stock_and_audit (__main__.MigrationTests.test_delivery_commit_failure_rolls_back_stock_and_audit) ... ok
+test_document_deduplication_does_not_add_stock (__main__.MigrationTests.test_document_deduplication_does_not_add_stock) ... ok
+test_duplicate_correction_and_unknown_reference_rejected (__main__.MigrationTests.test_duplicate_correction_and_unknown_reference_rejected) ... ok
+test_history_cannot_be_deleted_or_rewritten (__main__.MigrationTests.test_history_cannot_be_deleted_or_rewritten) ... ok
+test_json_restore_records_match (__main__.MigrationTests.test_json_restore_records_match) ... ok
+test_manifest_no_network_or_remote_permissions (__main__.MigrationTests.test_manifest_no_network_or_remote_permissions) ... ok
+test_migration_preserves_every_legacy_row (__main__.MigrationTests.test_migration_preserves_every_legacy_row) ... ok
+test_new_sale_audited_atomically_and_history_immutable (__main__.MigrationTests.test_new_sale_audited_atomically_and_history_immutable) ... ok
+test_opening_seed_and_unknown_dates (__main__.MigrationTests.test_opening_seed_and_unknown_dates) ... ok
+test_pending_command_persists_after_termination (__main__.MigrationTests.test_pending_command_persists_after_termination) ... ok
+test_persistence_and_restart_no_network (__main__.MigrationTests.test_persistence_and_restart_no_network) ... ok
+test_receipt_bytes_immutable_and_retained (__main__.MigrationTests.test_receipt_bytes_immutable_and_retained) ... ok
+test_reopen_version_does_not_reseed (__main__.MigrationTests.test_reopen_version_does_not_reseed) ... ok
+test_transaction_failure_is_atomic (__main__.MigrationTests.test_transaction_failure_is_atomic) ... ok
+test_unique_id_enforced_and_duplicate_rollback (__main__.MigrationTests.test_unique_id_enforced_and_duplicate_rollback) ... ok
 
 ----------------------------------------------------------------------
-Ran 9 tests in 0.011s
+Ran 24 tests in 0.037s
 
 OK
 PASS native Java totals match the existing tracker in 100 sale/fee/restock/missing/undo scenarios.

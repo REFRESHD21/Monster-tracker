@@ -1,0 +1,18 @@
+package au.monster.tracker;
+
+import java.util.*;
+
+/** Validates cross-domain links before any restore writes; SQL validates conflicts with current data. */
+public final class BusinessBackup {
+    public static void validate(Map<String,Object> all,List<Ledger.Event> events){
+        if(!all.keySet().equals(Ledger.set("documents","receipts","deliveries","cancellations","audit")))Purchases.bad("Unknown/missing business backup fields.");
+        Map<String,Ledger.Event> ledger=new HashMap<>();for(var e:events)ledger.put(e.id(),e);
+        Set<String> receiptIds=new HashSet<>();for(Object value:Purchases.list(all.get("receipts"))){var m=Purchases.map(value);var r=new Purchases.Receipt(Purchases.str(m,"hash"),Purchases.str(m,"mime"),Base64.getDecoder().decode(Purchases.str(m,"content")));if(!receiptIds.add(r.hash()))Purchases.bad("Duplicate receipt in backup.");}
+        Map<String,Purchases.Document> docs=new HashMap<>();Map<String,Purchases.Line> lines=new HashMap<>();Set<String> invoices=new HashSet<>(),usedReceipts=new HashSet<>();for(Object value:Purchases.list(all.get("documents"))){var d=Purchases.document(value);if(docs.put(d.id(),d)!=null)Purchases.bad("Duplicate document ID.");if(d.invoiceKey()!=null&&!invoices.add(d.invoiceKey()))Purchases.bad("Duplicate supplier invoice.");if(d.receiptHash()!=null&&(!receiptIds.contains(d.receiptHash())||!usedReceipts.add(d.receiptHash())))Purchases.bad("Missing or duplicate receipt link.");for(var l:d.lines())if(lines.put(l.id(),l)!=null)Purchases.bad("Duplicate purchase line.");}
+        Set<String> deliveryIds=new HashSet<>(),deliveryEvents=new HashSet<>(),undone=new HashSet<>();for(var e:events)if(e.type().equals("undo"))undone.add(e.target());Map<String,Long> quantities=new HashMap<>();for(Object value:Purchases.list(all.get("deliveries"))){var m=Purchases.map(value);String id=Purchases.str(m,"id"),lineId=Purchases.str(m,"lineId"),eventId=Purchases.str(m,"eventId");Purchases.checkId(id);Purchases.Line line=lines.get(lineId);Ledger.Event e=ledger.get(eventId);if(!deliveryIds.add(id)||!deliveryEvents.add(eventId)||line==null||!line.stock()||e==null||!e.type().equals("restock")||e.quantity()!=Purchases.num(m,"quantity")||e.cost()!=Purchases.num(m,"cost")||!Objects.equals(e.timestamp(),Purchases.num(m,"timestamp"))||e.recordedAt()!=Purchases.num(m,"recordedAt"))Purchases.bad("Invalid delivery/stock-event link.");Purchases.str(m,"note");if(!undone.contains(eventId))quantities.put(lineId,quantities.getOrDefault(lineId,0L)+e.quantity());}
+        for(var entry:quantities.entrySet())if(entry.getValue()>lines.get(entry.getKey()).cans())Purchases.bad("Backup over-receives a purchase line.");
+        Set<String> cancelled=new HashSet<>();for(Object value:Purchases.list(all.get("cancellations"))){var m=Purchases.map(value);Purchases.checkId(Purchases.str(m,"id"));String target=Purchases.str(m,"documentId");if(!docs.containsKey(target)||!cancelled.add(target)||Purchases.str(m,"note").trim().isEmpty())Purchases.bad("Invalid document correction.");Purchases.num(m,"recordedAt");}
+        Set<String> auditIds=new HashSet<>();for(Object value:Purchases.list(all.get("audit"))){var m=Purchases.map(value);if(!auditIds.add(Purchases.str(m,"id")))Purchases.bad("Duplicate audit ID.");String eventId=m.get("eventId")==null?null:Purchases.str(m,"eventId");if(eventId!=null&&!ledger.containsKey(eventId))Purchases.bad("Audit references a missing ledger event.");Purchases.str(m,"action");Purchases.str(m,"entityId");Purchases.num(m,"recordedAt");if(m.get("date")!=null)Purchases.num(m,"date");Purchases.map(m.get("payload"));}
+    }
+    private BusinessBackup(){}
+}

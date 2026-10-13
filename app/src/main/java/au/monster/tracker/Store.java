@@ -15,17 +15,16 @@ public final class Store implements AutoCloseable {
     Store(Context context,String name){helper=new Helper(context.getApplicationContext(),name);helper.setWriteAheadLoggingEnabled(true);}
     private static final class Helper extends SQLiteOpenHelper {
         final Context context;
-        Helper(Context c,String name){super(c,name,null,1);context=c;}
+        Helper(Context c,String name){super(c,name,null,2);context=c;}
         @Override public void onConfigure(SQLiteDatabase db){db.setForeignKeyConstraintsEnabled(true);}
         @Override public void onCreate(SQLiteDatabase db){
-            try(BufferedReader r=new BufferedReader(new InputStreamReader(context.getAssets().open("schema.sql"),StandardCharsets.UTF_8))){
-                String line;StringBuilder statement=new StringBuilder();while((line=r.readLine())!=null){statement.append(line).append('\n');if(line.trim().endsWith(";")){db.execSQL(statement.toString());statement.setLength(0);}}
-            }catch(IOException ex){throw new IllegalStateException("Could not create local database.",ex);}
+            script(db,"schema.sql");script(db,"migration-2.sql");
             // SQLiteOpenHelper invokes onCreate inside a transaction. Never seed on every launch.
             for(var e:Ledger.opening(System.currentTimeMillis()))insert(db,e);
             price(db,"single",350);price(db,"deal",600);
         }
-        @Override public void onUpgrade(SQLiteDatabase db,int oldVersion,int newVersion){throw new IllegalStateException("A non-destructive migration is required. No records were deleted.");}
+        void script(SQLiteDatabase db,String asset){try(BufferedReader r=new BufferedReader(new InputStreamReader(context.getAssets().open(asset),StandardCharsets.UTF_8))){String line;StringBuilder statement=new StringBuilder();while((line=r.readLine())!=null){statement.append(line).append('\n');if(line.trim().endsWith(";")){db.execSQL(statement.toString());statement.setLength(0);}}}catch(IOException ex){throw new IllegalStateException("Database migration could not be read. Existing records were not reset.",ex);}}
+        @Override public void onUpgrade(SQLiteDatabase db,int oldVersion,int newVersion){if(oldVersion==1&&newVersion==2)script(db,"migration-2.sql");else throw new IllegalStateException("Unsupported database migration. No records were deleted.");}
         @Override public void onOpen(SQLiteDatabase db){super.onOpen(db);try(Cursor c=db.rawQuery("PRAGMA quick_check",null)){if(!c.moveToFirst()||!c.getString(0).equals("ok"))throw new IllegalStateException("Local database integrity check failed. Do not uninstall; keep backups and request recovery help.");}}
     }
     private static void price(SQLiteDatabase db,String key,long value){ContentValues v=new ContentValues();v.put("key",key);v.put("value",value);db.insertWithOnConflict("settings",null,v,SQLiteDatabase.CONFLICT_REPLACE);}
@@ -40,6 +39,9 @@ public final class Store implements AutoCloseable {
     private static Ledger.Event pending(SQLiteDatabase db){try(Cursor c=db.rawQuery("SELECT json FROM pending WHERE id=1",null)){return c.moveToFirst()?Backup.event(Json.parse(c.getString(0))):null;}}
     public synchronized Ledger.Event recoverPending(){var e=pending(helper.getWritableDatabase());if(e!=null)record(e);return e;}
     public synchronized void acknowledge(String id){SQLiteDatabase db=helper.getWritableDatabase();db.beginTransaction();try{var e=pending(db);if(e!=null&&e.id().equals(id))db.delete("pending","id=1",null);db.setTransactionSuccessful();}finally{db.endTransaction();}}
-    public synchronized int importBackup(Backup.Data incoming){SQLiteDatabase db=helper.getWritableDatabase();db.beginTransaction();try{if(pending(db)!=null)throw new IllegalStateException("Finish the pending save before importing.");var current=events(db);var merged=Ledger.merge(current,incoming.events());for(int i=current.size();i<merged.size();i++)insert(db,merged.get(i));price(db,"single",incoming.prices().single());price(db,"deal",incoming.prices().deal());db.setTransactionSuccessful();return merged.size()-current.size();}finally{db.endTransaction();}}
+    public synchronized int importBackup(Backup.Data incoming){SQLiteDatabase db=helper.getWritableDatabase();db.beginTransaction();try{if(pending(db)!=null)throw new IllegalStateException("Finish the pending save before importing.");var current=events(db);var merged=Ledger.merge(current,incoming.events());for(int i=current.size();i<merged.size();i++)insert(db,merged.get(i));new BusinessStore(this).restore(incoming.business(),merged);price(db,"single",incoming.prices().single());price(db,"deal",incoming.prices().deal());db.setTransactionSuccessful();return merged.size()-current.size();}finally{db.endTransaction();}}
+    SQLiteDatabase database(){return helper.getWritableDatabase();}
+    public synchronized Backup.Data fullBackup(){SQLiteDatabase db=database();db.beginTransaction();try{var snapshot=snapshot();var result=new Backup.Data(snapshot.events(),snapshot.prices(),new BusinessStore(this).export());db.setTransactionSuccessful();return result;}finally{db.endTransaction();}}
     @Override public synchronized void close(){helper.close();}
 }
+

@@ -4,3 +4,6 @@ local.properties
 **/build/
 *.jks
 *.keystore
+
+
+.build-phase*-results.txt

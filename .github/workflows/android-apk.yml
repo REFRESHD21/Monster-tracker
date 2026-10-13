@@ -115,7 +115,7 @@ jobs:
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w au.monster.tracker.test/au.monster.tracker.DatabaseTestRunner | tee reports/device-tests.txt
-            grep -F 'DEVICE RESULTS: 9 passed, 0 failed.' reports/device-tests.txt
+            grep -F 'DEVICE RESULTS: 14 passed, 0 failed.' reports/device-tests.txt
 
       - name: Verify and package the installable APK
         id: verified
@@ -163,3 +163,4 @@ jobs:
           echo 'Download **monster-tracker-debug-apk** from this run’s Artifacts section.' >> "$GITHUB_STEP_SUMMARY"
           echo 'Compilation, Android unit tests, ZIP/package/DEX/signature checks and zero-permission checks passed.' >> "$GITHUB_STEP_SUMMARY"
           echo 'Device SQLite tests run when enabled. This is not a claim of physical-phone UI verification.' >> "$GITHUB_STEP_SUMMARY"
+

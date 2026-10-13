@@ -31,7 +31,7 @@ class LocalDatabaseTests(unittest.TestCase):
   self.db.close();self.db=sqlite3.connect(self.path)
   self.assertEqual(self.db.execute('SELECT count(*) FROM events').fetchone()[0],3)
   self.assertEqual(self.db.execute('SELECT revenue,fee FROM events WHERE type="deal"').fetchone(),(600,25))
-  self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0],1)
+  self.assertIn(self.db.execute('PRAGMA user_version').fetchone()[0],(1,2))
  def test_unique_id_enforced_and_duplicate_rollback(self):
   e=BACKUP['events'][2]
   with self.db:insert(self.db,e)
@@ -80,4 +80,43 @@ class LocalDatabaseTests(unittest.TestCase):
   self.assertEqual(len(manifest.findall('uses-permission')),0)
   ns='{http://schemas.android.com/apk/res/android}'
   self.assertEqual(manifest.find('application').get(ns+'allowBackup'),'false')
+MIGRATION=(ROOT/'app/src/main/assets/migration-2.sql').read_text()
+class MigrationTests(LocalDatabaseTests):
+ def setUp(self):
+  super().setUp();self.original=list(self.db.execute('SELECT * FROM events'))
+  self.db.executescript('BEGIN;'+MIGRATION+'PRAGMA user_version=2;COMMIT;')
+ def test_migration_preserves_every_legacy_row(self):
+  self.assertEqual(list(self.db.execute('SELECT * FROM events')),self.original)
+  self.assertEqual(self.db.execute('SELECT count(*) FROM audit').fetchone()[0],2)
+  self.assertEqual(self.db.execute('SELECT count(*) FROM audit WHERE occurred_at IS NULL').fetchone()[0],2)
+ def test_new_sale_audited_atomically_and_history_immutable(self):
+  with self.db:insert(self.db,BACKUP['events'][2])
+  self.assertEqual(self.db.execute('SELECT count(*) FROM audit').fetchone()[0],3)
+  with self.assertRaises(sqlite3.IntegrityError):self.db.execute('DELETE FROM audit')
+ def test_document_deduplication_does_not_add_stock(self):
+  original=b'%PDF-test original';digest=__import__('hashlib').sha256(original).hexdigest()
+  with self.db:
+   self.db.execute('INSERT INTO receipts VALUES(?,?,?)',(digest,'application/pdf',original))
+   self.db.execute('INSERT INTO documents VALUES(?,?,?,?,?)',('supplier-doc01','purchase',digest,'supplier-invoice-001','{}'))
+  with self.assertRaises(sqlite3.IntegrityError):
+   with self.db:self.db.execute('INSERT INTO documents VALUES(?,?,?,?,?)',('supplier-doc02','purchase',digest,'supplier-invoice-002','{}'))
+  self.assertEqual(self.db.execute('SELECT count(*) FROM events').fetchone()[0],2)
+ def test_delivery_commit_failure_rolls_back_stock_and_audit(self):
+  before=self.db.execute('SELECT count(*) FROM audit').fetchone()[0]
+  with self.assertRaises(sqlite3.IntegrityError):
+   with self.db:
+    insert(self.db,BACKUP['events'][2])
+    self.db.execute('INSERT INTO deliveries VALUES(?,?,?,?)',('delivery-00001','missing-line',BACKUP['events'][2]['id'],'{}'))
+  self.assertEqual(self.db.execute('SELECT count(*) FROM audit').fetchone()[0],before)
+  self.assertEqual(self.db.execute('SELECT count(*) FROM events').fetchone()[0],2)
+ def test_reopen_version_does_not_reseed(self):
+  self.db.close();self.db=sqlite3.connect(self.path)
+  self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0],2)
+  self.assertEqual(self.db.execute('SELECT count(*) FROM events').fetchone()[0],2)
+ def test_receipt_bytes_immutable_and_retained(self):
+  data=b'%PDF-original bytes';digest=__import__('hashlib').sha256(data).hexdigest()
+  with self.db:self.db.execute('INSERT INTO receipts VALUES(?,?,?)',(digest,'application/pdf',data))
+  with self.assertRaises(sqlite3.IntegrityError):self.db.execute('UPDATE receipts SET content=?',(b'changed',))
+  self.assertEqual(self.db.execute('SELECT content FROM receipts').fetchone()[0],data)
 if __name__=='__main__':unittest.main(verbosity=2)
+

@@ -3,6 +3,8 @@
     <application android:label="Monster Tracker" android:icon="@drawable/ic_monster"
         android:theme="@style/AppTheme" android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules" android:usesCleartextTraffic="false"
         android:supportsRtl="true">
+        <provider android:name=".ReceiptProvider" android:authorities="${applicationId}.receipts" android:exported="false" android:grantUriPermissions="true" />
+        <activity android:name=".BusinessActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
         <activity android:name=".MainActivity" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
@@ -11,3 +13,4 @@
         </activity>
     </application>
 </manifest>
+
