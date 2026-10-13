@@ -16,6 +16,7 @@ public final class CatalogTests {
         check("allocation quantity mismatch rejected",()->{var e=Ledger.event("deal",2,"cash",600,0,0,"",now,null);reject(()->Catalog.forEvent(e,Map.of(e.id(),Ledger.list(new Catalog.Allocation(id,1)))));});
         check("OCR supplier totals GST date and multipacks remain suggestions",()->{var r=ReceiptParser.parse("WOOLWORTHS\nInvoice No: A123\n13/10/2026\nMonster qty 2 24 pack $50.00 $100.00\nTOTAL $100.00\nGST $9.09");eq(r.supplier(),"WOOLWORTHS");eq(r.reference(),"A123");eq(r.total(),10000L);eq(r.gst(),909L);eq(r.items().size(),1);eq(r.items().get(0).packs(),2L);eq(r.items().get(0).packSize(),24L);eq(r.items().get(0).unitPrice(),5000L);eq(Ledger.displayTime(r.date()).contains("2026"),true);});
         check("OCR unknown dates remain unknown",()->{eq(ReceiptParser.parse("SUPPLIER\nMonster $50.00\nTOTAL $50.00").date(),null);eq(ReceiptParser.parse("SUPPLIER\n31/02/2026").date(),null);});
+        check("zero-target flavours do not generate shopping alerts",()->eq(Catalog.shopping(new Catalog.Product(Ledger.id(),"Inactive reorder",0,0,24,5000,""),0,0).low(),false));
         System.out.println("CATALOG RESULTS: "+passed+" passed, 0 failed.");
     }
 }

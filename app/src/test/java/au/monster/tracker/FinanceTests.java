@@ -19,6 +19,7 @@ public final class FinanceTests {
         test("dated reports exclude unknown history without fabricating dates",()->{var r=calculate(Ledger.opening(now));var s=Finance.summarize(r,Finance.period("day",LocalDate.now(Ledger.PERTH)));eq(s.rows().size(),0);eq(s.unknownDateRows(),2L);});
         test("Perth weekly quarterly and Australian financial year boundaries",()->{var d=LocalDate.of(2026,10,13);eq(Finance.period("week",d).label(),"2026-10-12 to 2026-10-18 (Perth)");eq(Finance.period("quarter",d).label(),"2026-10-01 to 2026-12-31 (Perth)");eq(Finance.period("financial_year",d).label(),"2026-07-01 to 2027-06-30 (Perth)");});
         test("report CSV includes correction references and escaping",()->{var es=new ArrayList<>(Ledger.opening(now));es.add(Ledger.event("single",1,"cash",350,0,0,"Receipt, \"review\"",now,null));String csv=Finance.csv(all(calculate(es)));eq(csv.contains("Receipt, \"\"review\"\""),true);});
+        test("undo a mistaken received return preserves original sale cost",()->{var es=new ArrayList<>(Ledger.opening(now));var sale=Ledger.event("deal",2,"cash",600,0,0,"",now,null);es.add(sale);var returned=Ledger.event("restock",2,"none",0,0,0,"Return",now+1,null);es.add(returned);es.add(Ledger.event("undo",0,"none",0,0,0,"Mistaken return",now+2,returned.id()));var r=Finance.calculate(es,Map.of(),Ledger.list(),Ledger.list(),Ledger.list(),Map.of(),Map.of(returned.id(),sale.id()));eq(all(r).cogs(),416L);eq(r.inventoryValue(),3751L);});
         System.out.println("FINANCE RESULTS: "+passed+" passed, 0 failed.");
     }
 }

@@ -5,7 +5,7 @@
 This build installs as **Monster Tracker Plus**, alongside the original Monster Tracker. The original build workflow did not retain its signing key (the cache path did not exist), so a safe in-place upgrade with the original certificate is unavailable.
 
 1. In the old app, export a full JSON backup to your phone.
-2. Install Monster-Tracker-1.6.apk and open **Monster Tracker Plus**.
+2. Install Monster-Tracker-1.6.1.apk and open **Monster Tracker Plus**.
 3. In Plus > Settings, import the old app's backup. Check the stock, revenue and History against the old app. Matching opening records are merged, not doubled.
 4. Keep the old app and the backup until you have verified the transfer. Nothing in this installer clears or changes the old app's data.
 
@@ -45,7 +45,7 @@ Cash/manual card ledger entries and receipt photos continue to work offline. Str
 
 ## Payment recovery and refunds
 
-The phone saves a checkout ID before networking. The backend stores that ID on durable disk and reuses a single Stripe PaymentIntent for retries, even after app/backend restart or a lost response. While a payment is unresolved, the app blocks other ledger entries. Resume / check pending Stripe payment reuses it. Cancellation checks Stripe before discarding an unpaid checkout; processing or paid payments cannot be silently canceled. An uncertain creation older than 20 hours stops for manual Stripe reconciliation before Stripe's idempotency key retention could expire. Search Stripe using the `monster_sale_id` metadata; do not charge that sale again.
+The phone saves a checkout ID before networking. The backend stores that ID on durable disk and reuses a single Stripe PaymentIntent for retries, even after app/backend restart or a lost response. While a payment is unresolved, its cans are reserved; other available stock remains usable offline. Resume / check pending Stripe payment reuses it. Cancellation checks Stripe before discarding an unpaid checkout; processing or paid payments cannot be silently canceled. An uncertain creation older than 20 hours stops for manual Stripe reconciliation before Stripe's idempotency key retention could expire. Search Stripe using the `monster_sale_id` metadata; do not charge that sale again.
 
 Live sales enter the ledger once Stripe confirms `succeeded` and provides the actual AUD settlement fee. If the fee is not available yet, the app says the payment was received and asks you to check status later; it does not charge again. A connected-network background job checks only the existing payment status and finalizes it exactly once after the actual fee is available. The PaymentIntent ID is retained in the transaction note. Test payments never enter the real ledger. Card numbers are handled by Stripe, not stored by this app.
 
@@ -68,4 +68,6 @@ Since you are under 18, follow Stripe's [account age requirements](https://suppo
 
 After completing steps above, run one test payment on your physical phone and check the same PaymentIntent in Stripe's test Dashboard. Tap **Test refund / check same test refund** and check that refund in the same test Dashboard. Confirm your real inventory/revenue remain unchanged. The backend should retain one order/refund ID on retries. Test refunds exercise only test money. Live mode remains off until you explicitly supply live setup and a stable production signing key.
 
-No real/test Stripe API write/readback, account verification, deployment, physical Tap to Pay collection or real refund was performed by this development environment. Seventeen backend tests use fake provider responses. Pending payment recovery is implemented; dispute/chargeback reconciliation is not automated. Provider refund status can change later, so use reconciliation to observe changes. Refund created timestamps come from Stripe, while report status-change dates are the known verification time, not an invented bank settlement date.
+No real/test Stripe API write/readback, account verification, deployment, physical Tap to Pay collection or real refund was performed by this development environment. Nineteen backend tests use fake provider responses. Pending payment recovery is implemented; dispute/chargeback reconciliation is not automated. Provider refund status can change later, so use reconciliation to observe changes. Refund created timestamps come from Stripe, while report status-change dates are the known verification time, not an invented bank settlement date.
+
+A pending payment reserves only its flavour/quantity. Available-stock displays and shopping alerts exclude that reservation; other cash/manual entries can continue offline. Resolve that flavour's payment before a physical count, and resolve all pending payments before phone transfer. Manual refund dates can explicitly stay unknown; incorrect manual refund records have append-only corrections. A physical return is independent of refund status and always needs your explicit confirmation.

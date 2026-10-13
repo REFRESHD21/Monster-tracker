@@ -27,9 +27,10 @@ export class Payments {
     this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS orders(id TEXT PRIMARY KEY,amount INTEGER NOT NULL,created_at INTEGER NOT NULL,intent_id TEXT,mode TEXT NOT NULL); CREATE TABLE IF NOT EXISTS refunds(id TEXT PRIMARY KEY,order_id TEXT NOT NULL REFERENCES orders(id),amount INTEGER NOT NULL,created_at INTEGER NOT NULL,refund_id TEXT UNIQUE);');
     const modes=this.db.prepare('SELECT DISTINCT mode FROM orders').all();if(modes.some(r=>r.mode!==(config.live?'live':'test'))){this.db.close();throw new Error('Use a separate payment database when switching Stripe mode. Keep the old database for recovery.');}
   }
-  async order(id,amount){
+  async order(id,amount,recordedAt){
     if(!/^[a-f0-9-]{36}$/.test(id)||!Number.isSafeInteger(amount)||amount<50||amount>10000000)throw new ApiError(400,'Invalid sale ID or amount. Minimum Stripe payment is AUD $0.50.');
-    this.db.prepare('INSERT OR IGNORE INTO orders VALUES(?,?,?,NULL,?)').run(id,amount,this.now(),this.config.live?'live':'test');
+    const original=recordedAt===undefined?this.now():recordedAt;if(!Number.isSafeInteger(original)||original<946684800000||original>this.now()+300000)throw new ApiError(400,'Invalid original payment timestamp.');
+    this.db.prepare('INSERT OR IGNORE INTO orders VALUES(?,?,?,NULL,?)').run(id,amount,Math.min(original,this.now()),this.config.live?'live':'test');
     let row=this.db.prepare('SELECT * FROM orders WHERE id=?').get(id);if(row.amount!==amount)throw new ApiError(409,'The amount of a pending payment cannot be changed.');
     if(this.active.has(id))return this.active.get(id);
     const operation=(async()=>{
@@ -54,8 +55,8 @@ export class Payments {
   async refund(body,statusOnly=false){
     const {saleId,amount,refundId,refundAmount}=body;
     if(!/^[a-f0-9-]{36}$/.test(refundId)||!Number.isSafeInteger(refundAmount)||refundAmount<1||refundAmount>amount)throw new ApiError(400,'Invalid refund ID/amount.');
-    const intent=await this.order(saleId,amount);this.validateIntent(intent,saleId,amount);if(intent.status!=='succeeded')throw new ApiError(409,'Only verified successful payments can be refunded.');
-    this.db.prepare('INSERT OR IGNORE INTO refunds VALUES(?,?,?,?,NULL)').run(refundId,saleId,refundAmount,this.now());let row=this.db.prepare('SELECT * FROM refunds WHERE id=?').get(refundId);
+    const intent=await this.order(saleId,amount,body.saleRecordedAt);this.validateIntent(intent,saleId,amount);if(intent.status!=='succeeded')throw new ApiError(409,'Only verified successful payments can be refunded.');
+    const original=body.refundRecordedAt===undefined?this.now():body.refundRecordedAt;if(!Number.isSafeInteger(original)||original<946684800000||original>this.now()+300000)throw new ApiError(400,'Invalid original refund timestamp.');this.db.prepare('INSERT OR IGNORE INTO refunds VALUES(?,?,?,?,NULL)').run(refundId,saleId,refundAmount,Math.min(original,this.now()));let row=this.db.prepare('SELECT * FROM refunds WHERE id=?').get(refundId);
     if(row.order_id!==saleId||row.amount!==refundAmount)throw new ApiError(409,'The sale and amount of a refund request cannot change.');
     const key='refund:'+refundId;if(this.active.has(key))return this.active.get(key);
     const operation=(async()=>{if(!row.refund_id){
@@ -88,7 +89,7 @@ export class Payments {
     if(path==='/connection_token'){const t=await this.stripe('POST','/terminal/connection_tokens',{location:this.config.location});return {secret:t.secret};}
     if(path==='/refund'||path==='/refund_status')return this.refund(body,path==='/refund_status');
     if(!['/payment','/status','/cancel','/reconcile'].includes(path))throw new ApiError(404,'Endpoint not found.');
-    const {saleId,amount}=body;let intent=await this.order(saleId,amount);this.validateIntent(intent,saleId,amount);
+    const {saleId,amount}=body;let intent=await this.order(saleId,amount,body.saleRecordedAt);this.validateIntent(intent,saleId,amount);
     if(path==='/reconcile'){const payment=this.summary(intent,saleId,amount);const refunds=await this.reconcileRefunds(intent,saleId);delete payment.clientSecret;return {payment,refunds};}
     if(path==='/cancel'&&intent.status!=='canceled'){
       if(['succeeded','processing','requires_capture'].includes(intent.status))throw new ApiError(409,'Payment may already be paid. Check status; do not collect another payment.');

@@ -17,7 +17,7 @@ See [STRIPE_SETUP.md](STRIPE_SETUP.md) for installation, receipt backups, accoun
 
 ## Build
 
-GitHub Actions runs host accounting/backup checks, payment-backend tests, Android unit tests, database/receipt/migration tests in an offline emulator, and APK package/signature/manifest verification. It exports a non-debuggable `Monster-Tracker-1.6.apk`.
+GitHub Actions runs host accounting/backup checks, payment-backend tests, Android unit tests, database/receipt/migration tests in an offline emulator, and APK package/signature/manifest verification. It exports a non-debuggable `Monster-Tracker-1.6.1.apk`.
 
 Locally with JDK 17, Android SDK and Gradle 8.9:
 
@@ -58,4 +58,6 @@ Open **History → sale → Refunds & returned goods**. Record a cash/manual-car
 
 Use **Confirm physically received returned cans** only after you actually receive them. Their original FIFO cost is restored; a refund alone never adds inventory. Financial report CSV/PDF includes refund money/fees, later failures and goods returns. The ordinary sales/stock CSV keeps the original sale records.
 
-After a successful Stripe test/simulated payment, the payment screen offers **Test refund / check same test refund**. Test payments/refunds never change the real ledger. Actual Stripe credentials and physical-device verification are still required. Pending live payments are automatically checked when connectivity returns; actual settlement fees must be known before finalizing the sale, so a paid-but-fee-pending checkout may temporarily block further ledger entries. See [STRIPE_SETUP.md](STRIPE_SETUP.md) for exact owner setup and [PHASES.md](PHASES.md) for completed versus externally unverified checks.
+After a successful Stripe test/simulated payment, the payment screen offers **Test refund / check same test refund**. Test payments/refunds never change the real ledger. Actual Stripe credentials and physical-device verification are still required. Pending live payments are automatically checked when connectivity returns; actual settlement fees must be known before finalizing the sale, so its cans remain reserved until the fee is known; other available cans can still be sold for cash/manual payments offline. See [STRIPE_SETUP.md](STRIPE_SETUP.md) for exact owner setup and [PHASES.md](PHASES.md) for completed versus externally unverified checks.
+
+A pending payment reserves only its flavour/quantity. Available-stock displays and shopping alerts exclude that reservation; other cash/manual entries can continue offline. Resolve that flavour's payment before a physical count, and resolve all pending payments before phone transfer. Manual refund dates can explicitly stay unknown; incorrect manual refund records have append-only corrections. A physical return is independent of refund status and always needs your explicit confirmation.
