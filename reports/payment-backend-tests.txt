@@ -1,0 +1,17 @@
+✔ authentication rejects missing/wrong tokens (1.121109ms)
+✔ live mode requires explicit activation (0.235597ms)
+✔ lost create response reuses one Stripe intent (1.509831ms)
+✔ restart reuses saved intent and forbids changed amount (1.487248ms)
+✔ concurrent retries share creation (0.428861ms)
+✔ paid sale cannot be discarded as canceled (0.579472ms)
+✔ uncertain creation freezes before idempotency expires (0.519283ms)
+✔ test and live databases cannot be mixed (0.872753ms)
+✔ fee stays unknown until settlement data exists (0.677096ms)
+ℹ tests 9
+ℹ suites 0
+ℹ pass 9
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 15.05423

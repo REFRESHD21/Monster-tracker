@@ -11,3 +11,6 @@ backend/data/
 *.jks
 
 .signing/
+
+
+.build-phase*-results.txt

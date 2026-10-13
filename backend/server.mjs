@@ -1,6 +1,6 @@
 import http from 'node:http';
 import {DatabaseSync} from 'node:sqlite';
-import {timingSafeEqual} from 'node:crypto';
+import {timingSafeEqual,createHash} from 'node:crypto';
 import {mkdirSync} from 'node:fs';
 import {dirname} from 'node:path';
 import {pathToFileURL} from 'node:url';
@@ -24,12 +24,13 @@ export class Payments {
   constructor(config,stripe=stripeClient(config.key),now=()=>Date.now()){
     this.config=config;this.stripe=stripe;this.now=now;this.active=new Map();
     if(config.dbPath!==':memory:')mkdirSync(dirname(config.dbPath),{recursive:true});this.db=new DatabaseSync(config.dbPath);
-    this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS orders(id TEXT PRIMARY KEY,amount INTEGER NOT NULL,created_at INTEGER NOT NULL,intent_id TEXT,mode TEXT NOT NULL);');
+    this.db.exec('PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL; CREATE TABLE IF NOT EXISTS orders(id TEXT PRIMARY KEY,amount INTEGER NOT NULL,created_at INTEGER NOT NULL,intent_id TEXT,mode TEXT NOT NULL); CREATE TABLE IF NOT EXISTS refunds(id TEXT PRIMARY KEY,order_id TEXT NOT NULL REFERENCES orders(id),amount INTEGER NOT NULL,created_at INTEGER NOT NULL,refund_id TEXT UNIQUE);');
     const modes=this.db.prepare('SELECT DISTINCT mode FROM orders').all();if(modes.some(r=>r.mode!==(config.live?'live':'test'))){this.db.close();throw new Error('Use a separate payment database when switching Stripe mode. Keep the old database for recovery.');}
   }
-  async order(id,amount){
+  async order(id,amount,recordedAt){
     if(!/^[a-f0-9-]{36}$/.test(id)||!Number.isSafeInteger(amount)||amount<50||amount>10000000)throw new ApiError(400,'Invalid sale ID or amount. Minimum Stripe payment is AUD $0.50.');
-    this.db.prepare('INSERT OR IGNORE INTO orders VALUES(?,?,?,NULL,?)').run(id,amount,this.now(),this.config.live?'live':'test');
+    const original=recordedAt===undefined?this.now():recordedAt;if(!Number.isSafeInteger(original)||original<946684800000||original>this.now()+300000)throw new ApiError(400,'Invalid original payment timestamp.');
+    this.db.prepare('INSERT OR IGNORE INTO orders VALUES(?,?,?,NULL,?)').run(id,amount,Math.min(original,this.now()),this.config.live?'live':'test');
     let row=this.db.prepare('SELECT * FROM orders WHERE id=?').get(id);if(row.amount!==amount)throw new ApiError(409,'The amount of a pending payment cannot be changed.');
     if(this.active.has(id))return this.active.get(id);
     const operation=(async()=>{
@@ -44,11 +45,52 @@ export class Payments {
   }
   validateIntent(intent,id,amount){if(intent.metadata?.monster_sale_id!==id||intent.amount!==amount||intent.currency!=='aud'||intent.livemode!==this.config.live)throw new ApiError(409,'Stripe payment does not match this sale or payment mode.');}
   summary(intent,id,amount){this.validateIntent(intent,id,amount);const transaction=intent.latest_charge?.balance_transaction;const fee=Number.isSafeInteger(transaction?.fee)?transaction.fee:null;if(fee!==null&&(fee<0||fee>amount||transaction.currency!=='aud'))throw new ApiError(409,'Unexpected Stripe fee or settlement currency; reconcile in Stripe.');return {id:intent.id,status:intent.status,amount,currency:'aud',live:this.config.live,fee,clientSecret:intent.client_secret};}
+  refundSummary(refund,row,intent){
+    if(refund.id!==row.refund_id||refund.payment_intent!==intent.id||refund.amount!==row.amount||refund.currency!=='aud'||refund.livemode!==this.config.live||!['pending','requires_action','succeeded','failed','canceled'].includes(refund.status))throw new ApiError(409,'Refund does not match its original sale or payment mode.');
+    const transaction=refund.balance_transaction,fee=Number.isSafeInteger(transaction?.fee)?transaction.fee:null;
+    if(fee!==null&&(Math.abs(fee)>10000000||transaction.currency!=='aud'))throw new ApiError(409,'Unexpected refund settlement fee/currency. Reconcile in Stripe.');
+    if(!Number.isSafeInteger(refund.created)||refund.created<946684800)throw new ApiError(409,'Invalid Stripe refund timestamp.');
+    return {requestId:row.id,saleId:row.order_id,id:refund.id,paymentIntent:intent.id,amount:row.amount,currency:'aud',live:this.config.live,status:refund.status,created:refund.created*1000,verifiedAt:this.now(),fee,failureReason:refund.failure_reason||null};
+  }
+  async refund(body,statusOnly=false){
+    const {saleId,amount,refundId,refundAmount}=body;
+    if(!/^[a-f0-9-]{36}$/.test(refundId)||!Number.isSafeInteger(refundAmount)||refundAmount<1||refundAmount>amount)throw new ApiError(400,'Invalid refund ID/amount.');
+    const intent=await this.order(saleId,amount,body.saleRecordedAt);this.validateIntent(intent,saleId,amount);if(intent.status!=='succeeded')throw new ApiError(409,'Only verified successful payments can be refunded.');
+    const original=body.refundRecordedAt===undefined?this.now():body.refundRecordedAt;if(!Number.isSafeInteger(original)||original<946684800000||original>this.now()+300000)throw new ApiError(400,'Invalid original refund timestamp.');this.db.prepare('INSERT OR IGNORE INTO refunds VALUES(?,?,?,?,NULL)').run(refundId,saleId,refundAmount,Math.min(original,this.now()));let row=this.db.prepare('SELECT * FROM refunds WHERE id=?').get(refundId);
+    if(row.order_id!==saleId||row.amount!==refundAmount)throw new ApiError(409,'The sale and amount of a refund request cannot change.');
+    const key='refund:'+refundId;if(this.active.has(key))return this.active.get(key);
+    const operation=(async()=>{if(!row.refund_id){
+      if(statusOnly){const all=await this.reconcileRefunds(intent,saleId);const found=all.find(r=>r.requestId===refundId);if(found)return found;throw new ApiError(409,'Refund creation is unresolved. Retry this same refund; do not make another request.');}
+      if(this.now()-row.created_at>20*3600000)throw new ApiError(409,'Uncertain refund is too old to retry safely. Reconcile in Stripe by monster_refund_id before proceeding.');
+      const result=await this.stripe('POST','/refunds',{payment_intent:intent.id,amount:String(refundAmount),'metadata[monster_sale_id]':saleId,'metadata[monster_refund_id]':refundId},'monster-refund-'+refundId);
+      if(!/^re_[A-Za-z0-9]+$/.test(result.id))throw new ApiError(409,'Stripe returned an invalid refund ID.');
+      this.db.prepare('UPDATE refunds SET refund_id=? WHERE id=?').run(result.id,refundId);row={...row,refund_id:result.id};
+    }const result=await this.stripe('GET','/refunds/'+row.refund_id,{'expand[]':'balance_transaction'});return this.refundSummary(result,row,intent);})();
+    this.active.set(key,operation);try{return await operation;}finally{this.active.delete(key);}
+  }
+  async reconcileRefunds(intent,saleId){
+    let after;const result=[];
+    for(let page=0;page<100;page++){
+      const fields={payment_intent:intent.id,limit:'100','expand[]':'data.balance_transaction'};if(after)fields.starting_after=after;
+      const list=await this.stripe('GET','/refunds',fields);if(!Array.isArray(list.data))throw new ApiError(502,'Invalid Stripe refund list.');
+      for(const refund of list.data){
+        if(!/^re_[A-Za-z0-9]+$/.test(refund.id)||refund.payment_intent!==intent.id)throw new ApiError(409,'Unmatched Stripe refund.');
+        let row=this.db.prepare('SELECT * FROM refunds WHERE refund_id=?').get(refund.id);
+        if(!row){const metadataId=refund.metadata?.monster_refund_id;const known=/^[a-f0-9-]{36}$/.test(metadataId||'')?this.db.prepare('SELECT * FROM refunds WHERE id=?').get(metadataId):null;
+          if(known){if(known.order_id!==saleId||known.amount!==refund.amount||known.refund_id&&known.refund_id!==refund.id)throw new ApiError(409,'Refund metadata conflict.');this.db.prepare('UPDATE refunds SET refund_id=? WHERE id=?').run(refund.id,metadataId);row={...known,refund_id:refund.id};}
+          else {const hash=createHash('sha256').update(refund.id).digest('hex');const id=[hash.slice(0,8),hash.slice(8,12),hash.slice(12,16),hash.slice(16,20),hash.slice(20,32)].join('-');this.db.prepare('INSERT INTO refunds VALUES(?,?,?,?,?)').run(id,saleId,refund.amount,this.now(),refund.id);row=this.db.prepare('SELECT * FROM refunds WHERE id=?').get(id);}
+        }result.push(this.refundSummary(refund,row,intent));
+      }
+      if(!list.has_more)return result;if(list.data.length===0)throw new ApiError(502,'Stripe refund pagination failed.');after=list.data.at(-1).id;
+    }throw new ApiError(409,'Refund history exceeds the reconciliation limit. No partial result was applied.');
+  }
   async request(path,body){
     if(path==='/config')return {live:this.config.live,location:this.config.location};
     if(path==='/connection_token'){const t=await this.stripe('POST','/terminal/connection_tokens',{location:this.config.location});return {secret:t.secret};}
-    if(!['/payment','/status','/cancel'].includes(path))throw new ApiError(404,'Endpoint not found.');
-    const {saleId,amount}=body;let intent=await this.order(saleId,amount);this.validateIntent(intent,saleId,amount);
+    if(path==='/refund'||path==='/refund_status')return this.refund(body,path==='/refund_status');
+    if(!['/payment','/status','/cancel','/reconcile'].includes(path))throw new ApiError(404,'Endpoint not found.');
+    const {saleId,amount}=body;let intent=await this.order(saleId,amount,body.saleRecordedAt);this.validateIntent(intent,saleId,amount);
+    if(path==='/reconcile'){const payment=this.summary(intent,saleId,amount);const refunds=await this.reconcileRefunds(intent,saleId);delete payment.clientSecret;return {payment,refunds};}
     if(path==='/cancel'&&intent.status!=='canceled'){
       if(['succeeded','processing','requires_capture'].includes(intent.status))throw new ApiError(409,'Payment may already be paid. Check status; do not collect another payment.');
       intent=await this.stripe('POST','/payment_intents/'+intent.id+'/cancel',{},'monster-cancel-'+saleId);
