@@ -142,4 +142,18 @@ class CatalogMigrationTests(unittest.TestCase):
   with self.assertRaises(sqlite3.IntegrityError):
    with self.db:self.db.execute('INSERT INTO barcodes VALUES(?,?)',('0012345678905','unknown-product'))
   self.assertEqual(self.db.execute('SELECT count(*) FROM barcodes').fetchone()[0],0)
+class FinanceMigrationTests(unittest.TestCase):
+ def setUp(self):
+  self.fixture=CatalogMigrationTests();self.fixture.setUp();self.db=self.fixture.db
+  self.before=list(self.db.execute('SELECT * FROM events'));self.audit=list(self.db.execute('SELECT * FROM audit'))
+  self.db.executescript('BEGIN;'+(ROOT/'app/src/main/assets/migration-5.sql').read_text()+'PRAGMA user_version=5;COMMIT;')
+ def tearDown(self):self.fixture.tearDown()
+ def test_finance_migration_preserves_history_and_defaults_unregistered(self):
+  self.assertEqual(list(self.db.execute('SELECT * FROM events')),self.before)
+  self.assertEqual(list(self.db.execute('SELECT * FROM audit')),self.audit)
+  self.assertFalse(json.loads(self.db.execute("SELECT body FROM finance_settings WHERE key='gst'").fetchone()[0])['registered'])
+ def test_historical_tax_snapshot_cannot_be_rewritten(self):
+  with self.db:self.db.execute('INSERT INTO finance_tax VALUES(?,?,?)',('tax-test-001','ledger','{}'))
+  with self.assertRaises(sqlite3.IntegrityError):self.db.execute("UPDATE finance_tax SET body='changed'")
+  with self.assertRaises(sqlite3.IntegrityError):self.db.execute('DELETE FROM finance_tax')
 if __name__=='__main__':unittest.main(verbosity=2)

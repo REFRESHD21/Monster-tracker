@@ -14,6 +14,7 @@
         <activity android:name=".StripeActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
         <provider android:name=".ReceiptProvider" android:authorities="${applicationId}.receipts" android:exported="false" android:grantUriPermissions="true" />
         <activity android:name=".CameraActivity" android:exported="false" android:screenOrientation="portrait" />
+        <activity android:name=".ReportsActivity" android:exported="false" />
         <activity android:name=".CatalogActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
         <activity android:name=".BusinessActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
         <activity android:name=".MainActivity" android:exported="true">

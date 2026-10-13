@@ -8,15 +8,16 @@ A native Android stock and sales ledger with local receipt photos and optional S
 - Take live receipt photos or import them through History > transaction > Receipt photos. Images are copied into the app and included in full JSON backups; CSV contains transaction data only.
 - Stripe Terminal 6.0.0 provides native Tap to Pay. A merchant-owned Stripe account and authenticated HTTPS payment backend are required. The included `backend/` uses durable SQLite and idempotent PaymentIntents. Test payments do not modify stock or revenue.
 - Real payments require a compatible physical Android 13+ phone. Samsung Galaxy A16 5G is on Stripe's device list; actual compatibility depends on NFC, security updates and device settings.
-- Version 1/2/3 databases migrate safely to version 4. Legacy JSON backups remain readable.
+- Version 1/2/3 databases migrate safely to version 5. Legacy JSON backups remain readable.
 - Stock > Supplier purchases supports reviewed multipacks, expenses and original JPG/PNG/PDF receipts with bundled offline OCR. Confirm invoices first, then confirm actual goods received separately; partial deliveries are supported.
+- Home/Settings > Profit reports supports offline FIFO COGS, profit by flavour, daily through annual reports, GST settings (default unregistered), and CSV/PDF export. Historical prices and GST snapshots remain unchanged by settings changes.
 - Stock > Flavours supports offline barcode assignments, per-flavour stock counts, minimum/target alerts, preferred suppliers and shopping lists. Current legacy stock remains explicitly unassigned until you identify its flavour with an audited stock transfer.
 
 See [STRIPE_SETUP.md](STRIPE_SETUP.md) for installation, receipt backups, account/backend setup and recovery. No live account, backend deployment or physical Tap to Pay charge has been configured here.
 
 ## Build
 
-GitHub Actions runs host accounting/backup checks, payment-backend tests, Android unit tests, database/receipt/migration tests in an offline emulator, and APK package/signature/manifest verification. It exports a non-debuggable `Monster-Tracker-1.3.apk`.
+GitHub Actions runs host accounting/backup checks, payment-backend tests, Android unit tests, database/receipt/migration tests in an offline emulator, and APK package/signature/manifest verification. It exports a non-debuggable `Monster-Tracker-1.4.apk`.
 
 Locally with JDK 17, Android SDK and Gradle 8.9:
 

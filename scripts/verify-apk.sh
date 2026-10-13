@@ -24,7 +24,7 @@ fine_permission=$(printf '%s\n' "$permissions" | grep 'android.permission.ACCESS
 if printf '%s\n' "$fine_permission" | grep -q 'maxSdkVersion'; then
  echo 'ERROR: precise location must be available on Android 13+ for Stripe.' >&2; exit 1
 fi
-printf '%s\n' "$badging" | grep -q "versionCode='4'"
+printf '%s\n' "$badging" | grep -q "versionCode='5'"
 if printf '%s\n' "$badging" | grep -q 'application-debuggable'; then
  echo 'ERROR: live Tap to Pay requires a non-debuggable APK.' >&2; exit 1
 fi
