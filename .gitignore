@@ -5,5 +5,12 @@ local.properties
 *.jks
 *.keystore
 
+backend/data/
+.env
+*.keystore
+*.jks
+
+.signing/
+
 
 .build-phase*-results.txt

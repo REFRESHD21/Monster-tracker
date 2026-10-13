@@ -31,7 +31,7 @@ class LocalDatabaseTests(unittest.TestCase):
   self.db.close();self.db=sqlite3.connect(self.path)
   self.assertEqual(self.db.execute('SELECT count(*) FROM events').fetchone()[0],3)
   self.assertEqual(self.db.execute('SELECT revenue,fee FROM events WHERE type="deal"').fetchone(),(600,25))
-  self.assertIn(self.db.execute('PRAGMA user_version').fetchone()[0],(1,2))
+  self.assertIn(self.db.execute('PRAGMA user_version').fetchone()[0],(1,2,3))
  def test_unique_id_enforced_and_duplicate_rollback(self):
   e=BACKUP['events'][2]
   with self.db:insert(self.db,e)
@@ -75,16 +75,19 @@ class LocalDatabaseTests(unittest.TestCase):
    with self.db:insert(self.db,pending)
   with self.db:self.db.execute('DELETE FROM pending')
   self.assertEqual(self.db.execute('SELECT count(*) FROM events').fetchone()[0],3)
- def test_manifest_no_network_or_remote_permissions(self):
+ def test_manifest_receipt_picker_has_no_storage_or_camera_permissions(self):
   manifest=ET.parse(ROOT/'app/src/main/AndroidManifest.xml').getroot()
-  self.assertEqual(len(manifest.findall('uses-permission')),0)
+  permissions={p.get('{http://schemas.android.com/apk/res/android}name') for p in manifest.findall('uses-permission')}
+  self.assertIn('android.permission.INTERNET',permissions)
+  self.assertNotIn('android.permission.CAMERA',permissions)
+  self.assertNotIn('android.permission.READ_EXTERNAL_STORAGE',permissions)
   ns='{http://schemas.android.com/apk/res/android}'
   self.assertEqual(manifest.find('application').get(ns+'allowBackup'),'false')
-MIGRATION=(ROOT/'app/src/main/assets/migration-2.sql').read_text()
+MIGRATION=(ROOT/'app/src/main/assets/migration-3.sql').read_text()
 class MigrationTests(LocalDatabaseTests):
  def setUp(self):
   super().setUp();self.original=list(self.db.execute('SELECT * FROM events'))
-  self.db.executescript('BEGIN;'+MIGRATION+'PRAGMA user_version=2;COMMIT;')
+  self.db.executescript('BEGIN;'+MIGRATION+'PRAGMA user_version=3;COMMIT;')
  def test_migration_preserves_every_legacy_row(self):
   self.assertEqual(list(self.db.execute('SELECT * FROM events')),self.original)
   self.assertEqual(self.db.execute('SELECT count(*) FROM audit').fetchone()[0],2)
@@ -96,7 +99,7 @@ class MigrationTests(LocalDatabaseTests):
  def test_document_deduplication_does_not_add_stock(self):
   original=b'%PDF-test original';digest=__import__('hashlib').sha256(original).hexdigest()
   with self.db:
-   self.db.execute('INSERT INTO receipts VALUES(?,?,?)',(digest,'application/pdf',original))
+   self.db.execute('INSERT INTO supplier_receipts VALUES(?,?,?)',(digest,'application/pdf',original))
    self.db.execute('INSERT INTO documents VALUES(?,?,?,?,?)',('supplier-doc01','purchase',digest,'supplier-invoice-001','{}'))
   with self.assertRaises(sqlite3.IntegrityError):
    with self.db:self.db.execute('INSERT INTO documents VALUES(?,?,?,?,?)',('supplier-doc02','purchase',digest,'supplier-invoice-002','{}'))
@@ -111,12 +114,11 @@ class MigrationTests(LocalDatabaseTests):
   self.assertEqual(self.db.execute('SELECT count(*) FROM events').fetchone()[0],2)
  def test_reopen_version_does_not_reseed(self):
   self.db.close();self.db=sqlite3.connect(self.path)
-  self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0],2)
+  self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0],3)
   self.assertEqual(self.db.execute('SELECT count(*) FROM events').fetchone()[0],2)
  def test_receipt_bytes_immutable_and_retained(self):
   data=b'%PDF-original bytes';digest=__import__('hashlib').sha256(data).hexdigest()
-  with self.db:self.db.execute('INSERT INTO receipts VALUES(?,?,?)',(digest,'application/pdf',data))
-  with self.assertRaises(sqlite3.IntegrityError):self.db.execute('UPDATE receipts SET content=?',(b'changed',))
-  self.assertEqual(self.db.execute('SELECT content FROM receipts').fetchone()[0],data)
+  with self.db:self.db.execute('INSERT INTO supplier_receipts VALUES(?,?,?)',(digest,'application/pdf',data))
+  with self.assertRaises(sqlite3.IntegrityError):self.db.execute('UPDATE supplier_receipts SET content=?',(b'changed',))
+  self.assertEqual(self.db.execute('SELECT content FROM supplier_receipts').fetchone()[0],data)
 if __name__=='__main__':unittest.main(verbosity=2)
-

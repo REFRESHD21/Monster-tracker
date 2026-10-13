@@ -9,4 +9,3 @@ public final class OfflineCoreUnitTest {
         CoreTests.main(new String[0]);
     }
 }
-
