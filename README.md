@@ -1,5 +1,7 @@
 # Monster Tracker 1.1
 
+Installs as **Monster Tracker Plus** alongside the original app. Export a JSON backup from the original, then import it into Plus to transfer your records safely.
+
 A native Android stock and sales ledger with local receipt photos and optional Stripe Tap to Pay.
 
 - Cash and manual card entries, stock purchases/adjustments, history and JSON backups work offline.
@@ -21,7 +23,7 @@ Locally with JDK 17, Android SDK and Gradle 8.9:
 bash scripts/verify-apk.sh app/build/outputs/apk/release/app-release.apk
 ```
 
-The release build currently uses the cached signing key from the first APK to preserve upgrades. Configure `MONSTER_KEYSTORE`, `MONSTER_STORE_PASSWORD`, `MONSTER_KEY_ALIAS` and `MONSTER_KEY_PASSWORD` privately to use your own production key; changing keys requires a planned record migration.
+The release build uses a new, explicitly cached signing key for Plus; the original workflow did not retain its key. Configure `MONSTER_KEYSTORE`, `MONSTER_STORE_PASSWORD`, `MONSTER_KEY_ALIAS` and `MONSTER_KEY_PASSWORD` privately to use your own production key; changing keys requires a planned record migration.
 
 ## Ledger behavior
 

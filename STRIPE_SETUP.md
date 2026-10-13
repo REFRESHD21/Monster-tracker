@@ -2,7 +2,14 @@
 
 ## Install without losing your existing records
 
-Export a JSON backup in the old app first. Install Monster-Tracker-1.1.apk over the existing app; do not uninstall or clear app data. This build uses the cached signing certificate from the first APK. The database upgrade adds receipts and pending payments while preserving existing history. If Android reports a signing mismatch, stop; do not uninstall to bypass it.
+This build installs as **Monster Tracker Plus**, alongside the original Monster Tracker. The original build workflow did not retain its signing key (the cache path did not exist), so a safe in-place upgrade with the original certificate is unavailable.
+
+1. In the old app, export a full JSON backup to your phone.
+2. Install Monster-Tracker-1.1.apk and open **Monster Tracker Plus**.
+3. In Plus > Settings, import the old app's backup. Check the stock, revenue and History against the old app. Matching opening records are merged, not doubled.
+4. Keep the old app and the backup until you have verified the transfer. Nothing in this installer clears or changes the old app's data.
+
+Future Plus updates must keep the same signing certificate. CI now explicitly creates/restores a signing file at the configured location; cache eviction is still possible, so an owned, privately backed-up release keystore is required before treating this as a long-term production payment app. If Android reports a signing mismatch, stop; do not uninstall to bypass it.
 
 ## Receipt photos
 
@@ -32,7 +39,7 @@ Stripe lists the Samsung Galaxy A16 5G as supported. The device still needs Andr
 
 ## Enable real payments only after testing
 
-Create a live Terminal location. Configure the backend with your live secret key and matching live location, a **new persistent payment database path**, and `MONSTER_ALLOW_LIVE=true`. Preserve the test database. Enable real payments in the app only after resolving every pending test payment. The provided APK is non-debuggable, as required by Stripe for live Tap to Pay; the SDK is version 6.0.0. It is currently signed with the cached Android debug certificate to preserve upgrades from your first install, not a privately owned long-term production keystore. Keep this certificate stable for future updates; rotating it requires a planned migration and backups. Configure your own release signing key before wider distribution.
+Create a live Terminal location. Configure the backend with your live secret key and matching live location, a **new persistent payment database path**, and `MONSTER_ALLOW_LIVE=true`. Preserve the test database. Enable real payments in the app only after resolving every pending test payment. The provided APK is non-debuggable, as required by Stripe for live Tap to Pay; the SDK is version 6.0.0. It is currently signed with a separate Android debug certificate for the Plus app, not a privately owned long-term production keystore. Keep this certificate stable for future updates; rotating it requires a planned migration and backups. Configure and back up your own release signing key before production deployment or wider distribution; migrate records through JSON when changing keys.
 
 Cash/manual card ledger entries and receipt photos continue to work offline. Stripe Tap to Pay needs internet and sends payment data to Stripe through its SDK. Network and location permissions are now present; no broad storage or camera permission is requested.
 

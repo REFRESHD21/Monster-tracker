@@ -18,6 +18,9 @@ concurrency:
   group: monster-apk-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  MONSTER_DEBUG_KEYSTORE: ${{ runner.temp }}/monster-plus-debug.keystore
+
 jobs:
   build:
     runs-on: ubuntu-24.04
@@ -72,8 +75,15 @@ jobs:
       - name: Cache debug signing key
         uses: actions/cache@v4
         with:
-          path: ~/.android/debug.keystore
-          key: monster-debug-signing-key-v1
+          path: ${{ env.MONSTER_DEBUG_KEYSTORE }}
+          key: monster-plus-debug-signing-key-v1
+
+      - name: Ensure explicit signing key exists
+        shell: bash
+        run: |
+          if [[ ! -f "$MONSTER_DEBUG_KEYSTORE" ]]; then
+            keytool -genkeypair -keystore "$MONSTER_DEBUG_KEYSTORE" -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
 
       - name: Run existing host checks
         working-directory: ${{ steps.project.outputs.path }}
@@ -115,7 +125,7 @@ jobs:
             adb shell settings get global airplane_mode_on | tr -d '\r' | grep -qx 1
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
-            adb shell am instrument -w au.monster.tracker.test/au.monster.tracker.DatabaseTestRunner | tee reports/device-tests.txt
+            adb shell am instrument -w au.monster.tracker.plus.test/au.monster.tracker.DatabaseTestRunner | tee reports/device-tests.txt
             grep -F 'DEVICE RESULTS: 15 passed, 0 failed.' reports/device-tests.txt
 
       - name: Verify and package the installable APK
@@ -130,7 +140,7 @@ jobs:
           cp reports/apk-verification.txt dist/
           (cd dist && sha256sum Monster-Tracker-1.1.apk > SHA256SUMS.txt)
           cat > dist/INSTALL.txt <<'INSTALL'
-          Extract this artifact ZIP on Android. Open Monster-Tracker-1.1.apk in Files.
+          Extract this artifact ZIP on Android. Open Monster-Tracker-1.1.apk in Files. This version installs as Monster Tracker Plus alongside the original. Export JSON in the old app, then import it in Plus; do not uninstall the old app until you have checked your records.
           Permit Install unknown apps for Files when Android asks, then install.
           Requires Android 8.0 or newer. Cash/manual sales and receipt photos work offline. Stripe payments require internet and setup.
           Back up existing records in Settings > Export full JSON backup before uninstalling or changing signing keys.
@@ -162,5 +172,5 @@ jobs:
         run: |
           echo '### Verified APK' >> "$GITHUB_STEP_SUMMARY"
           echo 'Download **monster-tracker-apk** from this run’s Artifacts section.' >> "$GITHUB_STEP_SUMMARY"
-          echo 'Compilation, Android unit tests, ZIP/package/DEX/signature checks and payment permissions and receipt checks passed.' >> "$GITHUB_STEP_SUMMARY"
+          echo 'Compilation, Android unit tests, APK signature, non-debuggable manifest, location permission and receipt checks passed.' >> "$GITHUB_STEP_SUMMARY"
           echo 'Device SQLite tests run when enabled. This is not a claim of physical-phone UI verification.' >> "$GITHUB_STEP_SUMMARY"
