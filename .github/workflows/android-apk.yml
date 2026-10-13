@@ -126,8 +126,9 @@ jobs:
             adb shell settings get global airplane_mode_on | tr -d '\r' | grep -qx 1
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell pm grant au.monster.tracker.plus android.permission.CAMERA
             adb shell am instrument -w au.monster.tracker.plus.test/au.monster.tracker.DatabaseTestRunner | tee reports/device-tests.txt
-            grep -F 'DEVICE RESULTS: 21 passed, 0 failed.' reports/device-tests.txt
+            grep -F 'DEVICE RESULTS: 27 passed, 0 failed.' reports/device-tests.txt
 
       - name: Verify and package the installable APK
         id: verified
@@ -137,16 +138,16 @@ jobs:
           set -euo pipefail
           bash scripts/verify-apk.sh app/build/outputs/apk/release/app-release.apk 2>&1 | tee reports/apk-verification.txt
           mkdir -p dist
-          cp app/build/outputs/apk/release/app-release.apk dist/Monster-Tracker-1.2.apk
+          cp app/build/outputs/apk/release/app-release.apk dist/Monster-Tracker-1.3.apk
           cp reports/apk-verification.txt dist/
-          (cd dist && sha256sum Monster-Tracker-1.2.apk > SHA256SUMS.txt)
+          (cd dist && sha256sum Monster-Tracker-1.3.apk > SHA256SUMS.txt)
           cat > dist/INSTALL.txt <<'INSTALL'
-          Extract this artifact ZIP on Android. Open Monster-Tracker-1.2.apk in Files. This version installs as Monster Tracker Plus alongside the original. Export JSON in the old app, then import it in Plus; do not uninstall the old app until you have checked your records.
+          Extract this artifact ZIP on Android. Open Monster-Tracker-1.3.apk in Files. This version installs as Monster Tracker Plus alongside the original. Export JSON in the old app, then import it in Plus; do not uninstall the old app until you have checked your records.
           Permit Install unknown apps for Files when Android asks, then install.
           Requires Android 8.0 or newer. Cash/manual sales and receipt photos work offline. Stripe payments require internet and setup.
           Back up existing records in Settings > Export full JSON backup before uninstalling or changing signing keys.
           INSTALL
-          echo "apk=$PWD/dist/Monster-Tracker-1.2.apk" >> "$GITHUB_OUTPUT"
+          echo "apk=$PWD/dist/Monster-Tracker-1.3.apk" >> "$GITHUB_OUTPUT"
 
       - name: Upload verified APK for phone installation
         uses: actions/upload-artifact@v4

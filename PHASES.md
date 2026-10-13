@@ -1,11 +1,11 @@
 # Upgrade progress
 
-## Phase 1 — implemented, awaiting this commit's Android build
+## Phase 1 — built and verified
 
 - Database version 1/2 → 3 adds tables and triggers; it does not rebuild, reset, rename or alter the existing ledger, settings, pending commands, opening IDs or dates.
 - Existing ledger rows are backfilled into an append-only audit. New ledger rows are audited by a SQL trigger in the same transaction, including the original undo behavior.
 - Offline supplier purchases have reviewed supplier/reference/date, multiple lines, multipacks, gross line costs, actual GST shown, notes and original JPG/PNG/PDF attachments. The date can explicitly remain unknown.
-- Receipts can be imported or photographed through the installed camera app. Original bytes are retained in private SQLite, immutable, and SHA-256 fingerprinted. A receipt already linked to a saved document or a repeated supplier/reference is rejected instead of creating another purchase.
+- Receipts can be imported or photographed. Original bytes are retained in private SQLite, immutable, and SHA-256 fingerprinted. A receipt already linked to a saved document or a repeated supplier/reference is rejected instead of creating another purchase.
 - Document confirmation does **not** add stock. A separate goods-received confirmation supports partial deliveries. Quantity and cumulative cost allocation are checked inside the same transaction as the restock and delivery/audit rows; repeated delivery IDs are idempotent.
 - Operating expenses and mixed purchase expense lines are recorded without changing stock. Expense undo/cancellation appends a correction; no saved row is edited/deleted. Cancelling a purchase stops additional delivery confirmations, while existing deliveries remain explicit ledger records and can be undone through History.
 - Dashboard retains the existing cash result after stock and adds expenses/result after stock and expenses. Purchase invoice totals are retained separately; this phase is not a profit/COGS or BAS report. Received stock carries allocated gross cost; unreceived costs are not yet part of the legacy inventory cash-result calculation.
@@ -14,13 +14,24 @@
 
 ## Validation
 
-64 host checks passed: 29 original Java checks, ten purchase/receipt/backup checks, 24 SQLite checks (including v1/v2 migrations), and original-ledger parity across 100 scenarios. Six Android instrumentation checks were added for genuine v1 migration, partial deliveries/idempotency, duplicate attachments, expense undo, and full backup/restore, making 21 in total. The workflow checks all 21 before APK publication. Camera/document-picker behavior requires phone testing.
+64 host checks passed: 29 original Java checks, ten purchase/receipt/backup checks, 24 SQLite checks (including v1/v2 migrations), and original-ledger parity across 100 scenarios. Six Android instrumentation checks were added for genuine v1 migration, partial deliveries/idempotency, duplicate attachments, expense undo, and full backup/restore, making 21 in total. The workflow checks all 21 before APK publication. Phase 1 CI run 38388080119 passed Android unit tests, all 21 airplane-mode emulator checks, and APK package/signature validation. Camera/document-picker behavior requires phone testing.
 
 ## Remaining phases
 
-2. On-device OCR, barcode camera scanning, per-flavour catalog/low-stock/shopping lists.
+2. Implemented in the current Phase 2 changes; Android build pending (details below).
 3. Consistent historical costing, profit and GST registration/tax treatment settings, period/flavour reports and CSV/PDF exports.
 4. Scheduled/encrypted backups, restore/recovery improvements and optional cloud destination.
 5. Stripe Terminal test integration, secure server authentication/connection tokens, verified payments/refunds and reconciliation. No payment processing or offline-card capability is claimed in Phase 1. Current Australian/device/account requirements will be checked before implementation; secrets will never be bundled into the APK.
 
 Phase 1 integration preserves the current Plus application ID/signing path, original photo receipts, encrypted payment settings and Stripe checkout/backend. A genuine v2 upgrade test additionally verifies photo bytes and pending payment persistence. Partial delivery cost allocation was hardened for undo/re-receive rounding: it allocates the remaining actual invoice cost, so all received costs still sum exactly to the invoice line.
+
+## Phase 2 — implemented, Android verification pending
+
+- Database version 4 adds per-flavour products, stock thresholds, supplier/pack estimates, saved barcodes, immutable transaction flavour allocations and explicit stock transfers. Existing inventory/history remains in “Monster — unassigned flavour”; assign current cans with an audited transfer without rewriting historical rows or adding stock.
+- Native live camera captures full-resolution receipt JPGs entirely offline. Import JPG/PNG/PDF remains available. Camera permission is requested only when scanning/capturing; declining it leaves manual/import entry available. No broad storage permission.
+- Bundled ML Kit Latin OCR scans images and up to 20 PDF pages (the entire original is retained). It suggests supplier/reference/date, products, pack quantities, unit/line prices, total and GST. Review is mandatory; suggested dates remain unknown if not detected. Suggestions never confirm delivery or add inventory. All inferred values can be removed/re-entered before saving.
+- Bundled ML Kit retail-barcode scanning supports sales, purchase lines and product/count lookup. Manual assignments/search work offline. Barcode reassignment requires confirmation and is audited. No external barcode database is used.
+- Sales and card checkout retain a durable flavour allocation, validate available stock for that flavour, and preserve their mapping through restart/retry/undo. Legacy events without a mapping remain unassigned. Existing Stripe integration is preserved; test/live rules and online requirements are unchanged.
+- Shopping lists show on-hand, outstanding confirmed purchase orders, required quantities, pack rounding and estimated supplier cost. New purchases only increase inventory after explicit received-goods confirmation. Physical counts create visible missing/restock adjustments; stock transfers are append-only.
+- Full version-4 JSON backups include products, barcodes, settings, stock mappings/transfers and the existing documents/receipts/audit. Restore rejects invalid links, barcode/identity conflicts and negative combined inventory without deleting existing history; legacy backups still work.
+- Host suite includes ten catalogue/OCR checks and three version-4 SQL migration checks. Android suite adds per-flavour sale/undo/deduplication, oversale rejection, catalogue restore/restart, bundled barcode and OCR first-use in airplane mode, and camera-screen fallback (27 checks total). Physical camera capture quality and retail barcode recognition still need phone testing.

@@ -79,7 +79,7 @@ class LocalDatabaseTests(unittest.TestCase):
   manifest=ET.parse(ROOT/'app/src/main/AndroidManifest.xml').getroot()
   permissions={p.get('{http://schemas.android.com/apk/res/android}name') for p in manifest.findall('uses-permission')}
   self.assertIn('android.permission.INTERNET',permissions)
-  self.assertNotIn('android.permission.CAMERA',permissions)
+  self.assertIn('android.permission.CAMERA',permissions)
   self.assertNotIn('android.permission.READ_EXTERNAL_STORAGE',permissions)
   ns='{http://schemas.android.com/apk/res/android}'
   self.assertEqual(manifest.find('application').get(ns+'allowBackup'),'false')
@@ -121,4 +121,25 @@ class MigrationTests(LocalDatabaseTests):
   with self.db:self.db.execute('INSERT INTO supplier_receipts VALUES(?,?,?)',(digest,'application/pdf',data))
   with self.assertRaises(sqlite3.IntegrityError):self.db.execute('UPDATE supplier_receipts SET content=?',(b'changed',))
   self.assertEqual(self.db.execute('SELECT content FROM supplier_receipts').fetchone()[0],data)
+class CatalogMigrationTests(unittest.TestCase):
+ def setUp(self):
+  self.fixture=MigrationTests();self.fixture.setUp();self.db=self.fixture.db
+  self.before=list(self.db.execute('SELECT * FROM events'));self.audit=list(self.db.execute('SELECT * FROM audit'))
+  self.db.executescript('BEGIN;'+(ROOT/'app/src/main/assets/migration-4.sql').read_text()+'PRAGMA user_version=4;COMMIT;')
+ def tearDown(self):self.fixture.tearDown()
+ def test_catalog_migration_preserves_ledger_audit_dates_and_settings(self):
+  self.assertEqual(list(self.db.execute('SELECT * FROM events')),self.before)
+  self.assertEqual(list(self.db.execute('SELECT * FROM audit')),self.audit)
+  self.assertEqual(self.db.execute('SELECT id FROM products').fetchone()[0],'legacy-unassigned')
+  self.assertEqual(self.db.execute('PRAGMA quick_check').fetchone()[0],'ok')
+ def test_historical_flavours_and_transfers_are_append_only(self):
+  with self.db:self.db.execute('INSERT INTO event_products VALUES(?,?,?)',(self.before[0][1],'legacy-unassigned',24))
+  with self.assertRaises(sqlite3.IntegrityError):self.db.execute('UPDATE event_products SET quantity=1')
+  with self.assertRaises(sqlite3.IntegrityError):self.db.execute('DELETE FROM event_products')
+  with self.db:self.db.execute('INSERT INTO flavour_transfers VALUES(?,?)',('transfer-test01','{}'))
+  with self.assertRaises(sqlite3.IntegrityError):self.db.execute('DELETE FROM flavour_transfers')
+ def test_barcode_association_rejects_unknown_product(self):
+  with self.assertRaises(sqlite3.IntegrityError):
+   with self.db:self.db.execute('INSERT INTO barcodes VALUES(?,?)',('0012345678905','unknown-product'))
+  self.assertEqual(self.db.execute('SELECT count(*) FROM barcodes').fetchone()[0],0)
 if __name__=='__main__':unittest.main(verbosity=2)

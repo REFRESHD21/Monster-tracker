@@ -16,7 +16,7 @@ permissions=$("$tools/aapt" dump permissions "$apk")
 printf '%s\n' "$permissions"
 # Stripe adds network, location, NFC, audio and foreground service permissions.
 # Receipt selection must not request broad storage or camera access.
-if printf '%s\n' "$permissions" | grep -Eq "READ_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE|MANAGE_EXTERNAL_STORAGE|READ_MEDIA_IMAGES|android.permission.CAMERA"; then
+if printf '%s\n' "$permissions" | grep -Eq "READ_EXTERNAL_STORAGE|WRITE_EXTERNAL_STORAGE|MANAGE_EXTERNAL_STORAGE|READ_MEDIA_IMAGES"; then
  echo 'ERROR: unexpected broad photo or camera permission.' >&2; exit 1
 fi
 printf '%s\n' "$permissions" | grep -q 'android.permission.INTERNET'
@@ -24,7 +24,7 @@ fine_permission=$(printf '%s\n' "$permissions" | grep 'android.permission.ACCESS
 if printf '%s\n' "$fine_permission" | grep -q 'maxSdkVersion'; then
  echo 'ERROR: precise location must be available on Android 13+ for Stripe.' >&2; exit 1
 fi
-printf '%s\n' "$badging" | grep -q "versionCode='3'"
+printf '%s\n' "$badging" | grep -q "versionCode='4'"
 if printf '%s\n' "$badging" | grep -q 'application-debuggable'; then
  echo 'ERROR: live Tap to Pay requires a non-debuggable APK.' >&2; exit 1
 fi

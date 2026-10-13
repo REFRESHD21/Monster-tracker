@@ -1,0 +1,23 @@
+package au.monster.tracker;
+
+import java.util.*;
+
+/** Offline flavour accounting; legacy history remains explicitly unassigned. */
+public final class Catalog {
+    public static final String LEGACY="legacy-unassigned";
+    public record Product(String id,String name,long minimum,long target,long packSize,long packCost,String supplier){
+        public Product{Purchases.checkId(id);if(name==null||name.trim().isEmpty()||name.length()>120||supplier==null||supplier.length()>120)Purchases.bad("Invalid flavour/supplier name.");if(minimum<0||target<minimum||target>10000||packSize<1||packSize>10000)Purchases.bad("Stock thresholds must satisfy 0 ≤ minimum ≤ target ≤ 10,000; pack size must be positive.");Ledger.checkMoney(packCost);}
+    }
+    public record Allocation(String productId,long quantity){public Allocation{Purchases.checkId(productId);if(quantity<1||quantity>10000)Purchases.bad("Invalid flavour quantity.");}}
+    public record Transfer(String id,String from,String to,long quantity,long recordedAt,String note){public Transfer{Purchases.checkId(id);Purchases.checkId(from);Purchases.checkId(to);if(from.equals(to)||quantity<1||quantity>10000||recordedAt<946684800000L||note==null||note.length()>500)Purchases.bad("Invalid flavour transfer.");}}
+    public record Shopping(Product product,long onHand,long ordered,long required,long packs,long estimatedCost){public boolean low(){return onHand==0||onHand<product.minimum;}}
+    public static Map<String,Long> stock(List<Ledger.Event> events,Map<String,List<Allocation>> allocations,List<Transfer> transfers){Map<String,Long> quantities=new HashMap<>();Set<String> undone=new HashSet<>();for(var e:events)if(e.type().equals("undo"))undone.add(e.target());for(var e:events){if(e.type().equals("undo")||undone.contains(e.id()))continue;for(var a:forEvent(e,allocations)){long sign=e.type().equals("restock")?1:-1;quantities.put(a.productId,quantities.getOrDefault(a.productId,0L)+sign*a.quantity);}}for(var t:transfers){quantities.put(t.from,quantities.getOrDefault(t.from,0L)-t.quantity);quantities.put(t.to,quantities.getOrDefault(t.to,0L)+t.quantity);}return quantities;}
+    public static List<Allocation> forEvent(Ledger.Event e,Map<String,List<Allocation>> allocations){if(e.type().equals("undo"))return Ledger.list();List<Allocation> result=allocations.get(e.id());if(result==null)return Ledger.list(new Allocation(LEGACY,e.quantity()));long sum=0;Set<String> products=new HashSet<>();for(var a:result){sum+=a.quantity;if(!products.add(a.productId))Purchases.bad("Duplicate flavour allocation.");}if(sum!=e.quantity())Purchases.bad("Flavour quantities do not match their ledger event.");return result;}
+    public static Shopping shopping(Product p,long onHand,long ordered){if(onHand<0||ordered<0)Purchases.bad("Negative product inventory.");long required=(onHand==0||onHand<p.minimum)?Math.max(0,p.target-onHand-ordered):0;long packs=(required+p.packSize-1)/p.packSize;return new Shopping(p,onHand,ordered,required,packs,packs*p.packCost);}
+    public static String barcode(String code){String normalized=code==null?"":code.trim();if(!normalized.matches("[A-Za-z0-9_.-]{4,80}"))Purchases.bad("Barcode must contain 4–80 letters/digits/dots/dashes. Leading zeros are preserved.");return normalized;}
+    public static List<Object> allocationMaps(List<Allocation> values){List<Object> rows=new ArrayList<>();for(var a:values){Map<String,Object> m=new LinkedHashMap<>();m.put("productId",a.productId);m.put("quantity",a.quantity);rows.add(m);}return rows;}
+    public static List<Allocation> allocations(Object value){List<Allocation> result=new ArrayList<>();for(Object entry:Purchases.list(value)){var m=Purchases.map(entry);result.add(new Allocation(Purchases.str(m,"productId"),Purchases.num(m,"quantity")));}return Ledger.copy(result);}
+    public static Map<String,Object> transferMap(Transfer t){Map<String,Object> m=new LinkedHashMap<>();m.put("id",t.id);m.put("from",t.from);m.put("to",t.to);m.put("quantity",t.quantity);m.put("recordedAt",t.recordedAt);m.put("note",t.note);return m;}
+    public static Transfer transfer(Object value){var m=Purchases.map(value);return new Transfer(Purchases.str(m,"id"),Purchases.str(m,"from"),Purchases.str(m,"to"),Purchases.num(m,"quantity"),Purchases.num(m,"recordedAt"),Purchases.str(m,"note"));}
+    private Catalog(){}
+}

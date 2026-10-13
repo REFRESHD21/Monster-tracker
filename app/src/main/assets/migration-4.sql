@@ -1,0 +1,14 @@
+CREATE TABLE products (id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE COLLATE NOCASE);
+INSERT INTO products VALUES('legacy-unassigned','Monster — unassigned flavour');
+CREATE TABLE product_settings (product_id TEXT PRIMARY KEY REFERENCES products(id), body TEXT NOT NULL);
+INSERT INTO product_settings VALUES('legacy-unassigned','{"minimum":5,"target":24,"packSize":24,"packCost":5000,"supplier":""}');
+CREATE TABLE barcodes (code TEXT PRIMARY KEY, product_id TEXT NOT NULL REFERENCES products(id));
+CREATE TABLE event_products (event_id TEXT NOT NULL REFERENCES events(id), product_id TEXT NOT NULL REFERENCES products(id), quantity INTEGER NOT NULL CHECK(quantity>0), PRIMARY KEY(event_id,product_id));
+CREATE TABLE catalog_plans (event_id TEXT PRIMARY KEY, body TEXT NOT NULL);
+CREATE TABLE flavour_transfers (id TEXT PRIMARY KEY, body TEXT NOT NULL);
+CREATE TRIGGER product_no_update BEFORE UPDATE ON products BEGIN SELECT RAISE(ABORT,'Product identities are immutable'); END;
+CREATE TRIGGER product_no_delete BEFORE DELETE ON products BEGIN SELECT RAISE(ABORT,'Products cannot be deleted'); END;
+CREATE TRIGGER allocation_no_update BEFORE UPDATE ON event_products BEGIN SELECT RAISE(ABORT,'Historical flavours are immutable'); END;
+CREATE TRIGGER allocation_no_delete BEFORE DELETE ON event_products BEGIN SELECT RAISE(ABORT,'Historical flavours cannot be deleted'); END;
+CREATE TRIGGER transfer_no_update BEFORE UPDATE ON flavour_transfers BEGIN SELECT RAISE(ABORT,'Flavour transfers are append-only'); END;
+CREATE TRIGGER transfer_no_delete BEFORE DELETE ON flavour_transfers BEGIN SELECT RAISE(ABORT,'Flavour transfers are append-only'); END;
