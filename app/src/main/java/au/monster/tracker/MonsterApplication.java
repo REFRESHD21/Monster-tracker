@@ -1,0 +1,7 @@
+package au.monster.tracker;
+import android.app.Application;
+import com.stripe.stripeterminal.TerminalApplicationDelegate;
+import com.stripe.stripeterminal.taptopay.TapToPay;
+public final class MonsterApplication extends Application {
+    @Override public void onCreate(){super.onCreate();if(TapToPay.Companion.isInTapToPayProcess())return;TerminalApplicationDelegate.onCreate(this);}
+}

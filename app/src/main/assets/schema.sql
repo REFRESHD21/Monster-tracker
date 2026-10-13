@@ -21,3 +21,6 @@ CREATE TABLE settings (key TEXT PRIMARY KEY, value INTEGER NOT NULL CHECK(value 
 CREATE TABLE pending (id INTEGER PRIMARY KEY CHECK(id=1), json TEXT NOT NULL);
 CREATE TRIGGER no_event_update BEFORE UPDATE ON events BEGIN SELECT RAISE(ABORT,'Transaction history is append-only'); END;
 CREATE TRIGGER no_event_delete BEFORE DELETE ON events BEGIN SELECT RAISE(ABORT,'Transaction history is append-only'); END;
+
+CREATE TABLE receipts (id TEXT PRIMARY KEY,event_id TEXT NOT NULL REFERENCES events(id),created_at INTEGER NOT NULL,mime TEXT NOT NULL,data BLOB NOT NULL,sha256 TEXT NOT NULL);
+CREATE TABLE checkout (id INTEGER PRIMARY KEY CHECK(id=1),json TEXT NOT NULL);

@@ -1,3 +1,7 @@
+# Monster Tracker 1.1 — Stripe Tap to Pay and receipt photos
+
+See [STRIPE_SETUP.md](STRIPE_SETUP.md) for installation, local receipt backups, Stripe account/backend setup, device requirements and payment recovery. Cash/manual records still work offline; Stripe payments require internet. This revision adds network/location permissions. Older zero-permission and unbuilt-APK statements below describe version 1.0 and are retained for provenance only.
+
 # Monster Tracker — native offline Android conversion
 
 **Build from your phone:** see [GITHUB_BUILD.md](GITHUB_BUILD.md). A GitHub Actions workflow now builds this existing app, runs host/Android unit tests and optional emulator tests, verifies the debug APK, and uploads it as an artifact. No Android Studio is needed on your phone. The workflow has not yet run.

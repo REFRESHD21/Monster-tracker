@@ -75,9 +75,12 @@ class LocalDatabaseTests(unittest.TestCase):
    with self.db:insert(self.db,pending)
   with self.db:self.db.execute('DELETE FROM pending')
   self.assertEqual(self.db.execute('SELECT count(*) FROM events').fetchone()[0],3)
- def test_manifest_no_network_or_remote_permissions(self):
+ def test_manifest_receipt_picker_has_no_storage_or_camera_permissions(self):
   manifest=ET.parse(ROOT/'app/src/main/AndroidManifest.xml').getroot()
-  self.assertEqual(len(manifest.findall('uses-permission')),0)
+  permissions={p.get('{http://schemas.android.com/apk/res/android}name') for p in manifest.findall('uses-permission')}
+  self.assertIn('android.permission.INTERNET',permissions)
+  self.assertNotIn('android.permission.CAMERA',permissions)
+  self.assertNotIn('android.permission.READ_EXTERNAL_STORAGE',permissions)
   ns='{http://schemas.android.com/apk/res/android}'
   self.assertEqual(manifest.find('application').get(ns+'allowBackup'),'false')
 if __name__=='__main__':unittest.main(verbosity=2)

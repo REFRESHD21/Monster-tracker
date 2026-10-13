@@ -7,6 +7,7 @@ java -m jdk.compiler/com.sun.tools.javac.Main -source 17 -target 17 -d .build/co
  app/src/main/java/au/monster/tracker/Ledger.java \
  app/src/main/java/au/monster/tracker/Json.java \
  app/src/main/java/au/monster/tracker/Backup.java \
+ app/src/main/java/au/monster/tracker/Receipts.java \
  app/src/test/java/au/monster/tracker/CoreTests.java
 java -cp .build/core au.monster.tracker.CoreTests
 python3 scripts/test-sqlite.py
