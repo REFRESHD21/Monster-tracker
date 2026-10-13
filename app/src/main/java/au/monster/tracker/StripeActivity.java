@@ -17,30 +17,27 @@ public final class StripeActivity extends Activity {
     private static final ExecutorService TOKEN_NETWORK=Executors.newSingleThreadExecutor();
     private final ExecutorService network=Executors.newSingleThreadExecutor();
     private Store store;private Ledger.Event sale;private PaymentSettings settings;private PaymentClient api;
-    private TextView status;private Button retry,cancel,close;private boolean working=false,finished=false;private Cancelable operation;
-    @Override public void onCreate(Bundle saved){super.onCreate(saved);store=new Store(this);sale=store.checkout();settings=new PaymentSettings(this);api=new PaymentClient(settings);
+    private TextView status;private Button retry,cancel,close,testRefund;private String testRefundId=Ledger.id();private boolean testPaid;private boolean working=false,finished=false;private Cancelable operation;
+    @Override public void onCreate(Bundle saved){super.onCreate(saved);store=new Store(this);sale=store.checkout();settings=new PaymentSettings(this);api=new PaymentClient(settings);if(saved!=null){testRefundId=saved.getString("testRefundId",testRefundId);testPaid=saved.getBoolean("testPaid",false);if(testPaid&&!settings.live()&&sale==null&&saved.getString("testSale")!=null)sale=Backup.event(Json.parse(saved.getString("testSale")));}
         LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);int insetPadding=Math.round(16*getResources().getDisplayMetrics().density);layout.setPadding(insetPadding,insetPadding,insetPadding,insetPadding);layout.setOnApplyWindowInsetsListener((view,insets)->{layout.setPadding(insetPadding,insetPadding+insets.getSystemWindowInsetTop(),insetPadding,insetPadding+insets.getSystemWindowInsetBottom());return insets;});layout.setBackgroundColor(0xff101410);
         TextView title=new TextView(this);title.setText(settings.live()?"Stripe Tap to Pay":"Stripe test payment");title.setTextSize(26);title.setTextColor(0xffb6f552);layout.addView(title);
         status=new TextView(this);status.setTextColor(0xfff0f5eb);status.setTextSize(18);status.setPadding(0,30,0,30);status.setAccessibilityLiveRegion(android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE);layout.addView(status);
         retry=new Button(this);retry.setText("Check status / retry same payment");retry.setOnClickListener(v->checkAndPay());layout.addView(retry);
         cancel=new Button(this);cancel.setText("Cancel unpaid payment");cancel.setOnClickListener(v->cancelPayment());layout.addView(cancel);
-        close=new Button(this);close.setText("Return to tracker");close.setOnClickListener(v->{if(!working)finish();});layout.addView(close);setContentView(layout);layout.requestApplyInsets();
+        close=new Button(this);close.setText("Return to tracker");close.setOnClickListener(v->{if(!working)finish();});layout.addView(close);testRefund=new Button(this);testRefund.setText("Test refund / check same test refund");testRefund.setMinHeight(Math.round(56*getResources().getDisplayMetrics().density));testRefund.setEnabled(false);testRefund.setVisibility(settings.live()?android.view.View.GONE:android.view.View.VISIBLE);testRefund.setOnClickListener(v->testRefund());layout.addView(testRefund);setContentView(layout);layout.requestApplyInsets();
         if(sale==null){finished=true;show("No payment is pending.");return;}
         show((settings.live()?"Amount: ":"TEST ONLY · no real charge: ")+Ledger.money(sale.revenue())+"\nA pending payment blocks new ledger entries until resolved.");
-        checkAndPay();
+        if(testPaid){finished=true;show("Prior test payment succeeded. No real ledger change. You can test its refund.");return;}checkAndPay();
     }
-    private void show(String text){status.setText(text);retry.setEnabled(!working&&!finished);cancel.setEnabled(!finished);close.setEnabled(!working);}
+    private void show(String text){status.setText(text);retry.setEnabled(!working&&!finished);cancel.setEnabled(!finished);close.setEnabled(!working);testRefund.setEnabled(testPaid&&!settings.live()&&!working);}
     private void fail(Exception e){working=false;operation=null;show((e.getMessage()==null?"Payment could not complete.":e.getMessage())+"\nUse Check status / retry. The same payment ID is retained.");}
     private void checkAndPay(){if(working||finished)return;if(!settings.configured()){show("Connect your secure Stripe backend in Settings first.");return;}working=true;show("Checking this payment with Stripe…");network.execute(()->{try{var config=api.post("/config",new LinkedHashMap<>());if(!Objects.equals(config.get("live"),settings.live()))throw new IllegalStateException("Backend payment mode differs from the phone. Resolve this with the original backend.");var response=api.sale("/payment",sale);runOnUiThread(()->handle(response,(String)config.get("location")));}catch(Exception e){runOnUiThread(()->fail(e));}});}
     private void handle(Map<String,Object> response,String location){
         try{String state=(String)response.get("status");if(!Objects.equals(response.get("live"),settings.live())||!Objects.equals(response.get("amount"),sale.revenue()))throw new IllegalStateException("Payment does not match this sale.");
             if("succeeded".equals(state)){
                 network.execute(()->{try{
-                    if(settings.live()){
-                        if(!(response.get("fee") instanceof Long fee))throw new IllegalStateException("Payment received. Stripe's actual fee is still pending. Do not charge again; check status later.");
-                        String note="Stripe "+response.get("id")+" · "+sale.note();if(note.length()>500)note=note.substring(0,500);
-                        var paid=new Ledger.Event(sale.id(),sale.timestamp(),sale.recordedAt(),sale.type(),sale.quantity(),"card",sale.revenue(),fee,0,note,null);store.finishCheckout(paid);
-                    }else store.clearCheckout(sale.id());
+                    if(!PaymentStatus.apply(store,sale,response,settings.live()))throw new IllegalStateException("Payment received. Stripe's actual fee is still pending. Automatic status recovery is scheduled; do not charge again.");
+                    if(!settings.live())testPaid=true;
                     runOnUiThread(()->{working=false;finished=true;operation=null;show(settings.live()?"Payment received and sale saved once, including Stripe's actual fee.":"Test payment succeeded. No real sale or stock change was recorded.");});
                 }catch(Exception e){runOnUiThread(()->fail(e));}});return;
             }
@@ -73,6 +70,8 @@ public final class StripeActivity extends Activity {
         if(operation!=null){Cancelable current=operation;current.cancel(new Callback(){public void onSuccess(){runOnUiThread(()->{operation=null;working=false;cancelPayment();});}public void onFailure(TerminalException e){runOnUiThread(()->fail(e));}});return;}
         working=true;show("Checking with Stripe before canceling…");network.execute(()->{try{var response=api.sale("/cancel",sale);runOnUiThread(()->handle(response,null));}catch(Exception e){runOnUiThread(()->fail(e));}});
     }
+    @Override protected void onSaveInstanceState(Bundle saved){super.onSaveInstanceState(saved);saved.putString("testRefundId",testRefundId);saved.putBoolean("testPaid",testPaid);if(testPaid&&sale!=null)saved.putString("testSale",Json.write(Backup.eventMap(sale)));}
+    private void testRefund(){if(working||!testPaid||settings.live())return;working=true;show("Checking the same test refund with Stripe…");network.execute(()->{try{var config=api.post("/config",new LinkedHashMap<>());if(!Objects.equals(config.get("live"),false))throw new IllegalStateException("Test refund requires the original test backend.");Map<String,Object> body=new LinkedHashMap<>();body.put("saleId",sale.id());body.put("amount",sale.revenue());body.put("refundId",testRefundId);body.put("refundAmount",sale.revenue());var response=api.post("/refund",body);if(!Objects.equals(response.get("live"),false)||!Objects.equals(response.get("saleId"),sale.id())||!Objects.equals(response.get("amount"),sale.revenue()))throw new IllegalStateException("Test refund response does not match this payment.");runOnUiThread(()->{working=false;show("TEST refund: "+response.get("status")+". No real money, stock or revenue was changed. Repeated checks reuse the same refund ID.");});}catch(Exception e){runOnUiThread(()->{working=false;show(e.getMessage()+"\nThe same test refund ID is retained; no real ledger change.");});}});}
     @Override public void onBackPressed(){if(!working)super.onBackPressed();else show("Finish or cancel the current payment before leaving.");}
     @Override protected void onDestroy(){network.execute(store::close);network.shutdown();super.onDestroy();}
 }

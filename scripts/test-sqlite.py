@@ -156,4 +156,21 @@ class FinanceMigrationTests(unittest.TestCase):
   with self.db:self.db.execute('INSERT INTO finance_tax VALUES(?,?,?)',('tax-test-001','ledger','{}'))
   with self.assertRaises(sqlite3.IntegrityError):self.db.execute("UPDATE finance_tax SET body='changed'")
   with self.assertRaises(sqlite3.IntegrityError):self.db.execute('DELETE FROM finance_tax')
+class RefundMigrationTests(unittest.TestCase):
+ def setUp(self):
+  self.fixture=FinanceMigrationTests();self.fixture.setUp();self.db=self.fixture.db
+  self.before=list(self.db.execute('SELECT * FROM events'));self.audit=list(self.db.execute('SELECT * FROM audit'))
+  self.db.executescript('BEGIN;'+(ROOT/'app/src/main/assets/migration-6.sql').read_text()+'PRAGMA user_version=6;COMMIT;')
+ def tearDown(self):self.fixture.tearDown()
+ def test_refund_migration_preserves_every_original_event(self):
+  self.assertEqual(list(self.db.execute('SELECT * FROM events')),self.before)
+  self.assertEqual(list(self.db.execute('SELECT * FROM audit')),self.audit)
+  self.assertEqual(self.db.execute('PRAGMA user_version').fetchone()[0],6)
+ def test_refund_history_is_append_only_and_source_linked(self):
+  with self.db:insert(self.db,BACKUP['events'][2])
+  with self.db:self.db.execute('INSERT INTO refund_requests VALUES(?,?,?)',('refund-test-001',BACKUP['events'][2]['id'],'{}'))
+  with self.assertRaises(sqlite3.IntegrityError):self.db.execute('DELETE FROM refund_requests')
+  with self.assertRaises(sqlite3.IntegrityError):self.db.execute("UPDATE refund_requests SET body='changed'")
+  with self.assertRaises(sqlite3.IntegrityError):
+   with self.db:self.db.execute('INSERT INTO refund_observations VALUES(?,?,?)',('observation01','unknown-request','{}'))
 if __name__=='__main__':unittest.main(verbosity=2)

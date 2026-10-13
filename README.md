@@ -8,7 +8,7 @@ A native Android stock and sales ledger with local receipt photos and optional S
 - Take live receipt photos or import them through History > transaction > Receipt photos. Images are copied into the app and included in full JSON backups; CSV contains transaction data only.
 - Stripe Terminal 6.0.0 provides native Tap to Pay. A merchant-owned Stripe account and authenticated HTTPS payment backend are required. The included `backend/` uses durable SQLite and idempotent PaymentIntents. Test payments do not modify stock or revenue.
 - Real payments require a compatible physical Android 13+ phone. Samsung Galaxy A16 5G is on Stripe's device list; actual compatibility depends on NFC, security updates and device settings.
-- Version 1/2/3 databases migrate safely to version 5. Legacy JSON backups remain readable.
+- Version 1/2/3 databases migrate safely to version 6. Legacy JSON backups remain readable.
 - Stock > Supplier purchases supports reviewed multipacks, expenses and original JPG/PNG/PDF receipts with bundled offline OCR. Confirm invoices first, then confirm actual goods received separately; partial deliveries are supported.
 - Home/Settings > Profit reports supports offline FIFO COGS, profit by flavour, daily through annual reports, GST settings (default unregistered), and CSV/PDF export. Historical prices and GST snapshots remain unchanged by settings changes.
 - Stock > Flavours supports offline barcode assignments, per-flavour stock counts, minimum/target alerts, preferred suppliers and shopping lists. Current legacy stock remains explicitly unassigned until you identify its flavour with an audited stock transfer.
@@ -17,7 +17,7 @@ See [STRIPE_SETUP.md](STRIPE_SETUP.md) for installation, receipt backups, accoun
 
 ## Build
 
-GitHub Actions runs host accounting/backup checks, payment-backend tests, Android unit tests, database/receipt/migration tests in an offline emulator, and APK package/signature/manifest verification. It exports a non-debuggable `Monster-Tracker-1.5.apk`.
+GitHub Actions runs host accounting/backup checks, payment-backend tests, Android unit tests, database/receipt/migration tests in an offline emulator, and APK package/signature/manifest verification. It exports a non-debuggable `Monster-Tracker-1.6.apk`.
 
 Locally with JDK 17, Android SDK and Gradle 8.9:
 
@@ -32,7 +32,7 @@ The release build uses a new, explicitly cached signing key for Plus; the origin
 
 Opening inventory is 24 cans purchased for AUD $50, with four missing and unknown historical dates: 20 available, $0 revenue, −$50 cash result. Singles default to $3.50 and two-can deals to $6. Prices and actual card fees are retained per sale. Cash result is revenue minus actual card fees minus all purchase costs, rather than cash drawer balance.
 
-Transaction history is append-only. Normal corrections add undo events; Stripe-paid sales cannot be undone because a ledger correction does not refund money. Stripe refunds/chargebacks require separate Dashboard handling and reconciliation in this version. Pending Stripe payments block new entries until resolved so retries reuse the same payment and stock allocation.
+Transaction history is append-only. Normal corrections add undo events; Stripe-paid sales cannot be undone because a ledger correction does not refund money. History > sale > Refunds & returned goods supports source-linked manual/Stripe refunds and verified Dashboard-refund reconciliation. Chargebacks/disputes still require separate Stripe handling and are not automatically reconciled. Pending Stripe payments block new entries until resolved so retries reuse the same payment and stock allocation.
 
 Receipts and records remain private on the phone. Ordinary JSON backups are unencrypted; encrypted portable backups and scheduled recovery copies are available in Settings > Encrypted backups. Keep the password and a file outside the phone. Stripe pairing credentials are encrypted in Android Keystore and excluded from backups. Never put Stripe secret keys in the APK or GitHub.
 
@@ -51,3 +51,11 @@ To update, export a full JSON backup first, then install the new APK over the ex
 Open **Settings → Encrypted backups, automatic schedule & recovery**. **Export portable encrypted backup** asks you to enter the same password twice and choose a file destination. Use at least 10 characters and keep that password somewhere safe outside the phone. The app verifies the file by reading/decrypting it after writing. On another Android phone, install the app and choose **Restore encrypted backup**, select the `.monsterbackup` file, enter its original password, review the preview and confirm **Merge & restore**. Matching opening/event IDs do not double stock; conflicting records reject the restore.
 
 For automatic copies, set an automatic-backup password, optionally choose a local/removable/provider folder, enable daily/weekly scheduling and tap **Back up now** to verify a real copy. Android may delay background jobs. The latest seven verified app-private copies can be opened through **View local recovery copies**; those copies are lost on uninstall/clear-data/phone loss. Provider/cloud copies require the provider to function and sync; verify them yourself before relying on remote storage. Password changes only affect new backups; keep previous passwords for older files. Stripe pairing and schedule credentials must be reconfigured after changing phones.
+
+## Refunds and payment recovery
+
+Open **History → sale → Refunds & returned goods**. Record a cash/manual-card refund already paid, or request a Stripe refund through the original live backend. Refund requests are saved before submission and keep the same ID for retries. Check/retry the existing request after an interruption; do not create another request. **Reconcile Stripe status & Dashboard refunds** retrieves provider status without charging a customer. Pending/failed/canceled refunds stay visible. The original fee is retained; any additional refund fee is recorded only when known. Cash/manual refunds require no internet.
+
+Use **Confirm physically received returned cans** only after you actually receive them. Their original FIFO cost is restored; a refund alone never adds inventory. Financial report CSV/PDF includes refund money/fees, later failures and goods returns. The ordinary sales/stock CSV keeps the original sale records.
+
+After a successful Stripe test/simulated payment, the payment screen offers **Test refund / check same test refund**. Test payments/refunds never change the real ledger. Actual Stripe credentials and physical-device verification are still required. Pending live payments are automatically checked when connectivity returns; actual settlement fees must be known before finalizing the sale, so a paid-but-fee-pending checkout may temporarily block further ledger entries. See [STRIPE_SETUP.md](STRIPE_SETUP.md) for exact owner setup and [PHASES.md](PHASES.md) for completed versus externally unverified checks.

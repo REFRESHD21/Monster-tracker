@@ -15,7 +15,9 @@
         <activity android:name=".StripeActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
         <provider android:name=".ReceiptProvider" android:authorities="${applicationId}.receipts" android:exported="false" android:grantUriPermissions="true" />
         <activity android:name=".CameraActivity" android:exported="false" android:screenOrientation="portrait" />
+        <service android:name=".PaymentCheckJob" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true" />
         <service android:name=".BackupJob" android:permission="android.permission.BIND_JOB_SERVICE" android:exported="true" />
+        <activity android:name=".RefundActivity" android:exported="false" />
         <activity android:name=".BackupActivity" android:exported="false" />
         <activity android:name=".ReportsActivity" android:exported="false" />
         <activity android:name=".CatalogActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
