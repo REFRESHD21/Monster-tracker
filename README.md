@@ -17,7 +17,7 @@ See [STRIPE_SETUP.md](STRIPE_SETUP.md) for installation, receipt backups, accoun
 
 ## Build
 
-GitHub Actions runs host accounting/backup checks, payment-backend tests, Android unit tests, database/receipt/migration tests in an offline emulator, and APK package/signature/manifest verification. It exports a non-debuggable `Monster-Tracker-1.4.apk`.
+GitHub Actions runs host accounting/backup checks, payment-backend tests, Android unit tests, database/receipt/migration tests in an offline emulator, and APK package/signature/manifest verification. It exports a non-debuggable `Monster-Tracker-1.5.apk`.
 
 Locally with JDK 17, Android SDK and Gradle 8.9:
 
@@ -34,7 +34,7 @@ Opening inventory is 24 cans purchased for AUD $50, with four missing and unknow
 
 Transaction history is append-only. Normal corrections add undo events; Stripe-paid sales cannot be undone because a ledger correction does not refund money. Stripe refunds/chargebacks require separate Dashboard handling and reconciliation in this version. Pending Stripe payments block new entries until resolved so retries reuse the same payment and stock allocation.
 
-Receipts and records remain private on the phone. Backups are unencrypted and should be kept in a safe separate location. Stripe pairing credentials are encrypted in Android Keystore and excluded from backups. Never put Stripe secret keys in the APK or GitHub.
+Receipts and records remain private on the phone. Ordinary JSON backups are unencrypted; encrypted portable backups and scheduled recovery copies are available in Settings > Encrypted backups. Keep the password and a file outside the phone. Stripe pairing credentials are encrypted in Android Keystore and excluded from backups. Never put Stripe secret keys in the APK or GitHub.
 
 The original pre-Android ledger and README are preserved under `provenance/`. Earlier build reports in `reports/` describe the source conversion; current CI reports are available as workflow artifacts.
 
@@ -45,3 +45,9 @@ In **Stock → Supplier purchases, receipts & expenses → New supplier purchase
 After the goods arrive, open the saved purchase and use **Confirm received goods** with the actual received quantity. The original image remains in private SQLite and is included in the full JSON backup. Barcode/OCR models are bundled with the APK and need no download on first use. Actual camera quality, focus and retail scanning need verification on your phone; see [PHASES.md](PHASES.md) for current build/test status.
 
 To update, export a full JSON backup first, then install the new APK over the existing **Monster Tracker Plus** using the same signing key. Do not uninstall Plus to resolve an installation error: uninstalling erases its database. If signing keys differ, keep the old installation and backup while arranging migration. Backup files do not survive phone loss unless copied elsewhere.
+
+## Encrypted backup and replacement-phone recovery
+
+Open **Settings → Encrypted backups, automatic schedule & recovery**. **Export portable encrypted backup** asks you to enter the same password twice and choose a file destination. Use at least 10 characters and keep that password somewhere safe outside the phone. The app verifies the file by reading/decrypting it after writing. On another Android phone, install the app and choose **Restore encrypted backup**, select the `.monsterbackup` file, enter its original password, review the preview and confirm **Merge & restore**. Matching opening/event IDs do not double stock; conflicting records reject the restore.
+
+For automatic copies, set an automatic-backup password, optionally choose a local/removable/provider folder, enable daily/weekly scheduling and tap **Back up now** to verify a real copy. Android may delay background jobs. The latest seven verified app-private copies can be opened through **View local recovery copies**; those copies are lost on uninstall/clear-data/phone loss. Provider/cloud copies require the provider to function and sync; verify them yourself before relying on remote storage. Password changes only affect new backups; keep previous passwords for older files. Stripe pairing and schedule credentials must be reconfigured after changing phones.

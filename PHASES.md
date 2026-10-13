@@ -38,7 +38,7 @@ Phase 1 integration preserves the current Plus application ID/signing path, orig
 
 Phase 2 run [38392426997](https://github.com/REFRESHD21/Monster-tracker/actions/runs/38392426997) passed host checks, Android unit tests, all 27 airplane-mode emulator checks and APK package/signature validation. Its artifact is `monster-tracker-apk` / `Monster-Tracker-1.3.apk`.
 
-## Phase 3 — implemented, Android verification pending
+## Phase 3 — built and verified
 
 - Version 5 adds immutable historical GST snapshots and future-only audited tax settings. No event, receipt, purchase or stock table is rebuilt. Existing history defaults to unregistered/no inferred credits; GST registration defaults OFF.
 - FIFO inventory valuation uses immutable ledger insertion order (not backdated sale dates), cents-exact remaining lot costs and flavour transfers. Transfers now retain their ledger anchor so same-millisecond activity and restored opening ingestion times do not change cost ordering. Existing version-4 transfers remain readable.
@@ -49,3 +49,15 @@ Phase 2 run [38392426997](https://github.com/REFRESHD21/Monster-tracker/actions/
 - These are bookkeeping estimates, not a BAS. Unreceived invoice costs, income tax and unrecorded expenses are excluded. Existing corrections are not payment refunds; Stripe refunds/reconciliation still require Phase 5.
 - Version-5 JSON backups include historical tax snapshots and GST settings, with cross-reference/conflict validation and audited settings restore. Legacy versions 1–4 remain readable.
 - Host checks include 11 FIFO/GST/report calculations and two version-5 migration/immutability checks. Five additional Android checks cover future-only GST across restart, partial receipt credits, financial backup/restore, v4 migration and native PDF/offline report startup (32 checks total).
+
+Phase 3 run [38394201361](https://github.com/REFRESHD21/Monster-tracker/actions/runs/38394201361) passed all host/Android unit tests, all 32 offline emulator checks, assembleDebug/assembleRelease and signature/package checks. Artifact: `monster-tracker-apk` / `Monster-Tracker-1.4.apk`.
+
+## Phase 4 — implemented, Android verification pending
+
+- Portable AES-256-GCM encryption uses a random salt/nonce for every backup and PBKDF2-HMAC-SHA256 (310,000 iterations). The entire header is authenticated. Passwords are required, confirmed for exports and never embedded in APK/source/backup metadata. Wrong passwords, malformed lengths, altered work factors, tampering and invalid decrypted JSON are rejected before restore.
+- Full encrypted backups preserve all version-5 business records/settings, original receipts, inventory, audit/corrections and financial snapshots. Export writes and reads back/decrypts the selected file. Restore previews new event counts and explicitly confirms merging records/restoring future settings; matching IDs are skipped and conflicts roll back atomically. Existing ordinary JSON/CSV options remain.
+- Scheduled daily/weekly local backups use Android JobScheduler and persist across reboot. The schedule defaults OFF. Its password is encrypted using Android Keystore, but portable backup decryption uses the user password so a replacement phone does not need the old device key. Password changes do not change older backups.
+- Automatic/manual recovery copies use a transactional SQLite snapshot, a private partial file, fsync, decrypt/readback validation and atomic rename. The latest seven finalized local copies are retained; originals and live records are not deleted. Interrupted temporary files are not presented as recovery copies.
+- An optional Android Storage Access Framework folder can receive verified encrypted copies. This may be local removable storage or a provider offering cloud sync; the app does not implement a paid cloud service/account. Actual remote cloud durability is provider-dependent and unverified. A provider failure retains the verified local recovery copy and reports the failure. Provider copies are not automatically deleted.
+- Uninstall/clear-data/phone loss also removes private recovery copies and device-keystore secrets. Keep a portable encrypted file and its password outside the phone. Scheduled-backup secrets, Stripe pairing credentials and device permission state are excluded intentionally and must be configured again on a replacement device. Android scheduling may be delayed by idle/battery restrictions; Back up now creates/verifies the first copy.
+- Eight host encryption checks and four Android checks cover encrypted complete receipt restore, Keystore wrapping/job configuration, atomic local recovery/readback and wrong-password database protection (36 offline Android checks in total). Physical folder-provider/cloud synchronization and real background timing need device verification.
