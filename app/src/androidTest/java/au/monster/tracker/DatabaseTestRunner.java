@@ -8,7 +8,7 @@ import java.util.*;
 
 /** Dependency-free device tests of the production Store, using isolated database files. */
 public final class DatabaseTestRunner extends Instrumentation {
-    private int total=14,index=0,passed=0,failed=0;
+    private int total=15,index=0,passed=0,failed=0;
     interface Case {void run()throws Exception;}
     @Override public void onCreate(Bundle args){super.onCreate(args);start();}
     private void eq(Object a,Object b){if(!Objects.equals(a,b))throw new AssertionError("got="+a+", expected="+b);}
@@ -32,6 +32,7 @@ public final class DatabaseTestRunner extends Instrumentation {
         test("pendingStripePaymentSurvivesRestartAndBlocksSales",()->fresh((s,file)->{var e=sale();s.beginCheckout(e);s.close();try(Store reopened=new Store(getTargetContext(),file)){eq(reopened.checkout(),e);try{reopened.stage(sale());throw new AssertionError("Pending payment allowed another sale");}catch(IllegalStateException expected){}eq(reopened.snapshot().events().size(),2);reopened.finishCheckout(e);eq(reopened.checkout(),null);eq(reopened.snapshot().events().size(),3);}}));
         test("simulatedStripePaymentLeavesStockUntouched",()->fresh((s,file)->{var e=sale();s.beginCheckout(e);s.clearCheckout(e.id());eq(s.snapshot().totals().stock(),20L);eq(s.snapshot().events().size(),2);eq(s.checkout(),null);}));
         test("receiptImportConflictRollsBackPrices",()->fresh((s,file)->{android.graphics.Bitmap bitmap=android.graphics.Bitmap.createBitmap(8,8,android.graphics.Bitmap.Config.ARGB_8888);java.io.ByteArrayOutputStream output=new java.io.ByteArrayOutputStream();bitmap.compress(android.graphics.Bitmap.CompressFormat.JPEG,90,output);bitmap.recycle();byte[] image=output.toByteArray();var p=Receipts.photo(Ledger.OPEN_PURCHASE,image);s.addReceipt(p);var conflicting=new Receipts.Photo(p.id(),Ledger.OPEN_MISSING,p.createdAt(),p.mime(),p.base64(),p.sha256());try{s.importBackup(new Backup.Data(s.snapshot().events(),new Ledger.Prices(999,999),Ledger.list(conflicting)));throw new AssertionError("Receipt conflict accepted");}catch(IllegalArgumentException expected){}eq(s.snapshot().prices().single(),350L);eq(s.snapshot().receipts().get(0),p);}));
+        test("mainActivityStartsOfflineWithStripeOptional",()->{android.app.Activity activity=startActivitySync(new android.content.Intent(getTargetContext(),MainActivity.class).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK));Thread.sleep(1500);check(!activity.isFinishing());runOnMainSync(activity::finish);});
         Bundle done=new Bundle();done.putString("stream","\nDEVICE RESULTS: "+passed+" passed, "+failed+" failed.\n");finish(failed==0?Activity.RESULT_OK:Activity.RESULT_CANCELED,done);
     }
 }
