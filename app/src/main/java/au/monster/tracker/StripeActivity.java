@@ -19,12 +19,12 @@ public final class StripeActivity extends Activity {
     private Store store;private Ledger.Event sale;private PaymentSettings settings;private PaymentClient api;
     private TextView status;private Button retry,cancel,close;private boolean working=false,finished=false;private Cancelable operation;
     @Override public void onCreate(Bundle saved){super.onCreate(saved);store=new Store(this);sale=store.checkout();settings=new PaymentSettings(this);api=new PaymentClient(settings);
-        LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);layout.setPadding(28,40,28,28);layout.setBackgroundColor(0xff101410);
+        LinearLayout layout=new LinearLayout(this);layout.setOrientation(LinearLayout.VERTICAL);int insetPadding=Math.round(16*getResources().getDisplayMetrics().density);layout.setPadding(insetPadding,insetPadding,insetPadding,insetPadding);layout.setOnApplyWindowInsetsListener((view,insets)->{layout.setPadding(insetPadding,insetPadding+insets.getSystemWindowInsetTop(),insetPadding,insetPadding+insets.getSystemWindowInsetBottom());return insets;});layout.setBackgroundColor(0xff101410);
         TextView title=new TextView(this);title.setText(settings.live()?"Stripe Tap to Pay":"Stripe test payment");title.setTextSize(26);title.setTextColor(0xffb6f552);layout.addView(title);
         status=new TextView(this);status.setTextColor(0xfff0f5eb);status.setTextSize(18);status.setPadding(0,30,0,30);status.setAccessibilityLiveRegion(android.view.View.ACCESSIBILITY_LIVE_REGION_POLITE);layout.addView(status);
         retry=new Button(this);retry.setText("Check status / retry same payment");retry.setOnClickListener(v->checkAndPay());layout.addView(retry);
         cancel=new Button(this);cancel.setText("Cancel unpaid payment");cancel.setOnClickListener(v->cancelPayment());layout.addView(cancel);
-        close=new Button(this);close.setText("Return to tracker");close.setOnClickListener(v->{if(!working)finish();});layout.addView(close);setContentView(layout);
+        close=new Button(this);close.setText("Return to tracker");close.setOnClickListener(v->{if(!working)finish();});layout.addView(close);setContentView(layout);layout.requestApplyInsets();
         if(sale==null){finished=true;show("No payment is pending.");return;}
         show((settings.live()?"Amount: ":"TEST ONLY · no real charge: ")+Ledger.money(sale.revenue())+"\nA pending payment blocks new ledger entries until resolved.");
         checkAndPay();
