@@ -60,8 +60,8 @@ public final class CoreTests {
             List<Object> eventRows=new ArrayList<>();for(var e:es)eventRows.add(Backup.eventMap(e));
             Map<String,Object> scenario=new LinkedHashMap<>();scenario.put("events",eventRows);scenario.put("totals",values);parity.add(scenario);
         }
-        Files.writeString(Path.of(".build/parity.json"),Json.write(parity),StandardCharsets.UTF_8);
-        var fixture=add(opening(),sale("host-fixture-01","deal","card",600,25));Files.writeString(Path.of(".build/host-backup.json"),Backup.encode(data(fixture)),StandardCharsets.UTF_8);
+        Files.write(Path.of(".build/parity.json"),Json.write(parity).getBytes(StandardCharsets.UTF_8));
+        var fixture=add(opening(),sale("host-fixture-01","deal","card",600,25));Files.write(Path.of(".build/host-backup.json"),Backup.encode(data(fixture)).getBytes(StandardCharsets.UTF_8));
         System.out.println("CORE RESULTS: "+passed+" passed, "+failed+" failed.");if(failed>0)throw new AssertionError(failed+" core checks failed");
     }
 }
