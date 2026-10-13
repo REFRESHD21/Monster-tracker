@@ -9,3 +9,5 @@ backend/data/
 .env
 *.keystore
 *.jks
+
+.signing/

@@ -19,7 +19,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  MONSTER_DEBUG_KEYSTORE: ${{ runner.temp }}/monster-plus-debug.keystore
+  MONSTER_DEBUG_KEYSTORE: ${{ github.workspace }}/.signing/monster-plus-debug.keystore
 
 jobs:
   build:
@@ -81,6 +81,7 @@ jobs:
       - name: Ensure explicit signing key exists
         shell: bash
         run: |
+          mkdir -p "$(dirname "$MONSTER_DEBUG_KEYSTORE")"
           if [[ ! -f "$MONSTER_DEBUG_KEYSTORE" ]]; then
             keytool -genkeypair -keystore "$MONSTER_DEBUG_KEYSTORE" -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
