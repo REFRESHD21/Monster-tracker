@@ -94,6 +94,7 @@ jobs:
           mkdir -p reports
           bash scripts/test-core.sh 2>&1 | tee reports/host-tests.txt
           node --test backend/server.test.mjs 2>&1 | tee reports/payment-backend-tests.txt
+          node sheets/receiver.test.mjs
 
       - name: Compile, run Android unit tests and assemble APKs
         working-directory: ${{ steps.project.outputs.path }}

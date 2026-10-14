@@ -39,7 +39,7 @@ public final class StripeActivity extends Activity {
                     if(settings.live()){
                         if(!(response.get("fee") instanceof Long fee))throw new IllegalStateException("Payment received. Stripe's actual fee is still pending. Do not charge again; check status later.");
                         String note="Stripe "+response.get("id")+" · "+sale.note();if(note.length()>500)note=note.substring(0,500);
-                        var paid=new Ledger.Event(sale.id(),sale.timestamp(),sale.recordedAt(),sale.type(),sale.quantity(),"card",sale.revenue(),fee,0,note,null);store.finishCheckout(paid);
+                        var paid=new Ledger.Event(sale.id(),sale.timestamp(),sale.recordedAt(),sale.type(),sale.quantity(),"card",sale.revenue(),fee,0,note,null);store.finishCheckout(paid);SheetsSync.schedule(this,false);
                     }else store.clearCheckout(sale.id());
                     runOnUiThread(()->{working=false;finished=true;operation=null;show(settings.live()?"Payment received and sale saved once, including Stripe's actual fee.":"Test payment succeeded. No real sale or stock change was recorded.");});
                 }catch(Exception e){runOnUiThread(()->fail(e));}});return;

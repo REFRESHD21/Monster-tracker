@@ -5,6 +5,7 @@ Installs as **Monster Tracker Plus** alongside the original app. Export a JSON b
 A native Android stock and sales ledger with local receipt photos and optional Stripe Tap to Pay.
 
 - Cash and manual card entries, stock purchases/adjustments, history and JSON backups work offline.
+- Optional Google Sheets uploads: manual Upload now, automatic network-constrained retries, duplicate protection and sync status. Configure your own private spreadsheet receiver using [SHEETS_SETUP.md](SHEETS_SETUP.md). This does not require Stripe.
 - Attach receipt photos through History > transaction > Receipt photos. Images are copied into the app and included in full JSON backups; CSV contains transaction data only.
 - Stripe Terminal 6.0.0 provides native Tap to Pay. A merchant-owned Stripe account and authenticated HTTPS payment backend are required. The included `backend/` uses durable SQLite and idempotent PaymentIntents. Test payments do not modify stock or revenue.
 - Real payments require a compatible physical Android 13+ phone. Samsung Galaxy A16 5G is on Stripe's device list; actual compatibility depends on NFC, security updates and device settings.
