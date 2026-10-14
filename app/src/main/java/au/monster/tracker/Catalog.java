@@ -8,6 +8,8 @@ public final class Catalog {
     public record Product(String id,String name,long minimum,long target,long packSize,long packCost,String supplier){
         public Product{Purchases.checkId(id);if(name==null||name.trim().isEmpty()||name.length()>120||supplier==null||supplier.length()>120)Purchases.bad("Invalid flavour/supplier name.");if(minimum<0||target<minimum||target>10000||packSize<1||packSize>10000)Purchases.bad("Stock thresholds must satisfy 0 ≤ minimum ≤ target ≤ 10,000; pack size must be positive.");Ledger.checkMoney(packCost);}
     }
+    public static String displayName(Map<String,Object> settings,String original){Object value=settings.get("displayName");if(value==null&&!settings.containsKey("displayName"))return original;if(!(value instanceof String))throw new IllegalArgumentException("Invalid flavour display name.");String name=((String)value).trim();if(name.isEmpty()||name.length()>120)Purchases.bad("Flavour name must contain 1–120 characters.");return name;}
+    public static boolean deleted(Map<String,Object> settings){Object value=settings.get("deleted");if(value!=null&&!(value instanceof Boolean))Purchases.bad("Invalid flavour deletion status.");return Boolean.TRUE.equals(value);}
     public record Allocation(String productId,long quantity){public Allocation{Purchases.checkId(productId);if(quantity<1||quantity>10000)Purchases.bad("Invalid flavour quantity.");}}
     public record Transfer(String id,String from,String to,long quantity,long recordedAt,String note,String afterEventId){public Transfer(String id,String from,String to,long quantity,long recordedAt,String note){this(id,from,to,quantity,recordedAt,note,null);}public Transfer{if(afterEventId!=null)Purchases.checkId(afterEventId);Purchases.checkId(id);Purchases.checkId(from);Purchases.checkId(to);if(from.equals(to)||quantity<1||quantity>10000||recordedAt<946684800000L||note==null||note.length()>500)Purchases.bad("Invalid flavour transfer.");}}
     public record Shopping(Product product,long onHand,long ordered,long required,long packs,long estimatedCost){public boolean low(){return product.target>0&&(onHand==0||onHand<product.minimum);}}
@@ -21,3 +23,4 @@ public final class Catalog {
     public static Transfer transfer(Object value){var m=Purchases.map(value);return new Transfer(Purchases.str(m,"id"),Purchases.str(m,"from"),Purchases.str(m,"to"),Purchases.num(m,"quantity"),Purchases.num(m,"recordedAt"),Purchases.str(m,"note"),m.get("afterEventId")==null?null:Purchases.str(m,"afterEventId"));}
     private Catalog(){}
 }
+
