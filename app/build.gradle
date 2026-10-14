@@ -6,8 +6,8 @@ android {
         applicationId 'au.monster.tracker.plus'
         minSdk 26
         targetSdk 35
-        versionCode 8
-        versionName '1.6.1'
+        versionCode 10
+        versionName '1.6.3'
         testInstrumentationRunner 'au.monster.tracker.DatabaseTestRunner'
     }
     buildFeatures { buildConfig true }
