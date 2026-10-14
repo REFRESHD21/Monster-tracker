@@ -1,4 +1,14 @@
-# Monster Tracker 1.1
+# Monster Tracker 1.6.2 — rename, delete and restore flavours
+
+Use **Rename flavour** on the flavour details screen to correct its displayed name while preserving its ID, stock, barcodes, costs and transactions. Duplicate names are rejected; renames are audited and included in JSON/encrypted backups. Historical supplier receipt text remains unchanged.
+
+In **Stock → Flavours, barcodes & shopping list**, open a flavour and choose **Delete flavour**. A deleted flavour is hidden from working lists, sales/purchase pickers, barcode selection and shopping alerts. Its name, historical transactions, costs and reports remain intact.
+
+Deletion requires zero stock, no unreceived supplier goods and no pending payment/local save. The unassigned historical flavour cannot be deleted. Use **Deleted flavours** to restore a removed flavour with its existing settings and barcode mapping. An undo, physical goods return or merged backup that brings back stock automatically restores visibility, with an audit entry. Deletion state is included in JSON and encrypted backups; importing an older stock-free backup does not silently undelete it.
+
+Back up Plus before installing `Monster-Tracker-1.6.2.apk` over the existing Plus app; do not uninstall it. The signing certificate must match the installed APK.
+
+# Version 1.6.1 feature and setup reference
 
 Installs as **Monster Tracker Plus** alongside the original app. Export a JSON backup from the original, then import it into Plus to transfer your records safely.
 
@@ -65,3 +75,4 @@ A pending payment reserves only its flavour/quantity. Available-stock displays a
 ## Verified download
 
 The current 1.6.1 application passed all 111 host checks, 19 fake-provider backend tests, Android unit tests and 45 airplane-mode Android checks in [run 38409682236](https://github.com/REFRESHD21/Monster-tracker/actions/runs/38409682236). Download **monster-tracker-apk** for phone installation. A separate debug APK is available. [GITHUB_BUILD.md](GITHUB_BUILD.md) has current installation, backup/recovery, signing and phone-friendly rebuild instructions. Actual physical-camera/Stripe/cloud-provider verification remains external; no real Stripe API write/readback is claimed.
+
