@@ -1,0 +1,16 @@
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+import assert from 'node:assert/strict';
+const ctx=vm.createContext({});vm.runInContext(readFileSync(new URL('./Code.gs',import.meta.url),'utf8'),ctx);
+const event={id:'sale-1234567890',timestamp:'2026-10-14T00:00:00Z',recordedAt:'2026-10-14T00:00:00Z',type:'single',quantity:1,payment:'cash',revenue:350,fee:0,cost:0,note:'=IMPORTXML("bad")',target:null};
+const rows=ctx.prepare([event],new Map());assert.equal(rows.length,1);assert.equal(rows[0][6],3.5);assert.ok(rows[0][9].startsWith("'="));
+const existing=new Map([[event.id,ctx.canonical(event)]]);
+assert.equal(ctx.prepare([event],existing).length,0);
+assert.equal(ctx.prepare([event,event],new Map()).length,1);
+assert.throws(()=>ctx.prepare([{...event,revenue:400}],existing),/conflict/);
+assert.throws(()=>ctx.prepare([event,{...event,revenue:400}],new Map()),/conflict/);
+assert.throws(()=>ctx.prepare([{...event,revenue:-1}],new Map()),/amount/);
+assert.throws(()=>ctx.prepare([{...event,extra:1}],new Map()),/fields/);
+const opening={...event,id:'opening-purchase-v1',type:'restock',quantity:24,payment:'none',revenue:0,cost:5000,timestamp:null};
+assert.equal(ctx.canonical(opening),ctx.canonical({...opening,recordedAt:'2026-10-15T00:00:00Z'}));
+console.log('Sheets receiver: deduplication, lost-ack retries, conflicts, cents, formula escaping and opening migration passed.');
