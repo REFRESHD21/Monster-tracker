@@ -11,10 +11,12 @@ class Repository {
   final Database db; int revision=0; late Obj state;
   Repository._(this.db);
   static Future<Repository> open({bool migrate=true}) async {
-    final db=await openDatabase(path.join(await getDatabasesPath(),'business-tracker-v1.db'),version:2,onUpgrade:(db,old,_) async {
+    final db=await openDatabase(path.join(await getDatabasesPath(),'business-tracker-v1.db'),version:3,singleInstance:false,onUpgrade:(db,old,_) async {
       if(old==1){final rows=await db.query('tracker');await db.execute('CREATE TABLE state_chunks (seq INTEGER PRIMARY KEY,body TEXT NOT NULL)');if(rows.isNotEmpty){final text=rows.first['body'] as String;for(var i=0;i<text.length;i+=131072){await db.insert('state_chunks',{'seq':i~/131072,'body':text.substring(i,i+131072<text.length?i+131072:text.length)});} }await db.execute('ALTER TABLE tracker RENAME TO tracker_old');await db.execute('CREATE TABLE tracker (id INTEGER PRIMARY KEY CHECK(id=1),revision INTEGER NOT NULL)');await db.execute('INSERT INTO tracker(id,revision) SELECT id,revision FROM tracker_old');await db.execute('DROP TABLE tracker_old');}
+      if(old<3)await db.execute('CREATE TABLE sync_ack (destination TEXT NOT NULL,business_id TEXT NOT NULL,record_id TEXT NOT NULL,hash TEXT NOT NULL,PRIMARY KEY(destination,business_id,record_id))');
     },onCreate:(db,_) async {
       await db.execute('CREATE TABLE tracker (id INTEGER PRIMARY KEY CHECK(id=1),revision INTEGER NOT NULL)');
+      await db.execute('CREATE TABLE sync_ack (destination TEXT NOT NULL,business_id TEXT NOT NULL,record_id TEXT NOT NULL,hash TEXT NOT NULL,PRIMARY KEY(destination,business_id,record_id))');
       await db.execute('CREATE TABLE state_chunks (seq INTEGER PRIMARY KEY,body TEXT NOT NULL)');
       await db.execute('CREATE TABLE safety (id INTEGER PRIMARY KEY CHECK(id=1),legacy TEXT NOT NULL)');
       await db.execute("CREATE TRIGGER keep_safety BEFORE UPDATE ON safety BEGIN SELECT RAISE(ABORT,'Original migration backup is immutable'); END");

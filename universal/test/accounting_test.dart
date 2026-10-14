@@ -4,6 +4,22 @@ import 'package:business_tracker/core/codec.dart';
 import 'package:business_tracker/core/engine.dart';
 import 'package:business_tracker/core/legacy.dart';
 void main() {
+  test('Perth ranges use exclusive ends, Monday weeks and July financial year',(){
+    final day=reportRange('day',DateTime.parse('2026-10-14T18:00:00Z'));
+    expect(day.$1,DateTime.parse('2026-10-14T16:00:00Z').millisecondsSinceEpoch);
+    expect(day.$2,DateTime.parse('2026-10-15T16:00:00Z').millisecondsSinceEpoch);
+    final fy=reportRange('financial year',DateTime.parse('2026-02-01T00:00:00Z'));
+    expect(fy.$1,DateTime.parse('2025-06-30T16:00:00Z').millisecondsSinceEpoch);
+    expect(fy.$2,DateTime.parse('2026-06-30T16:00:00Z').millisecondsSinceEpoch);
+  });
+  test('identifying historical stock transfers original FIFO cost without profit',(){
+    final a=calculate([event(id:'restock-test-001',type:'restock',quantity:3,productId:legacyProduct,cost:1000),{...event(id:'transfer-test-001',type:'transfer',quantity:2),'from':legacyProduct,'to':'product-test-001'}]);
+    expect(a.book.stock(legacyProduct),1);expect(a.book.stock('product-test-001'),2);expect(a.book.value,1000);expect(a.summary()['netProfit'],0);
+  });
+  test('correcting one of several GST refunds recomputes cumulative rounding',(){
+    final a=calculate([event(id:'restock-test-001',type:'restock',quantity:2,productId:'product-test-001',cost:200),event(id:'sale-test-00001',type:'sale',quantity:2,productId:'product-test-001',revenue:600,payment:'cash',outputGst:55),event(id:'refund-test-001',type:'refund',target:'sale-test-00001',revenue:300),event(id:'refund-test-002',type:'refund',target:'sale-test-00001',revenue:300),event(id:'correct-test-001',type:'undo',target:'refund-test-001',note:'Entry mistake')]);
+    expect(a.summary()['revenue'],300);expect(a.summary()['outputGst'],28);
+  });
   test('100 independent Java oracle histories preserve FIFO, fees, losses and corrections', () {
     final cases = strictJson(File('test/fixtures/java-parity.json').readAsStringSync()) as List;
     for(final c in cases) {final state=importLegacy(canonical(c['backup']));final a=validateState(state), totals=a.summary();for(final k in obj(c['expected']).keys) {expect(k=='stock'?a.book.stock(legacyProduct):totals[k],c['expected'][k],reason:'scenario ${cases.indexOf(c)}, $k');}expect(decodeBackup(encodeBackup(state)),state);}

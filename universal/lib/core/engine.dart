@@ -175,3 +175,20 @@ String attachmentMime(List<int> bytes) {
   if(bytes.length>=5 && String.fromCharCodes(bytes.take(5))=='%PDF-')return 'application/pdf';
   throw const FormatException('Choose an original JPG, PNG or PDF.');
 }
+
+/// Half-open reporting ranges in the original fixed Perth business timezone.
+(int?,int?) reportRange(String kind, DateTime instant) {
+  if(kind=='all')return (null,null);
+  final local=instant.toUtc().add(const Duration(hours:8));
+  var start=DateTime.utc(local.year,local.month,local.day),end=start.add(const Duration(days:1));
+  switch(kind){
+    case 'day':break;
+    case 'week':start=start.subtract(Duration(days:local.weekday-1));end=start.add(const Duration(days:7));
+    case 'month':start=DateTime.utc(local.year,local.month);end=DateTime.utc(local.year,local.month+1);
+    case 'quarter':final month=((local.month-1)~/3)*3+1;start=DateTime.utc(local.year,month);end=DateTime.utc(local.year,month+3);
+    case 'year':start=DateTime.utc(local.year);end=DateTime.utc(local.year+1);
+    case 'financial year':final year=local.month<7?local.year-1:local.year;start=DateTime.utc(year,7);end=DateTime.utc(year+1,7);
+    default:throw const FormatException('Unknown report period.');
+  }
+  return (start.subtract(const Duration(hours:8)).millisecondsSinceEpoch,end.subtract(const Duration(hours:8)).millisecondsSinceEpoch);
+}

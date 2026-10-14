@@ -35,6 +35,8 @@ s=s.replace('buildTypes {','''signingConfigs {
     buildTypes {''').replace('signingConfig = signingConfigs.getByName("debug")','signingConfig = signingConfigs.getByName("compatible")')
 s=s.replace('buildTypes {\n','buildTypes {\n        getByName("debug") { signingConfig = signingConfigs.getByName("compatible") }\n',1)
 s=s.replace('sourceCompatibility = JavaVersion.VERSION_11','sourceCompatibility = JavaVersion.VERSION_17').replace('targetCompatibility = JavaVersion.VERSION_11','targetCompatibility = JavaVersion.VERSION_17').replace('jvmTarget = JavaVersion.VERSION_11.toString()','jvmTarget = JavaVersion.VERSION_17.toString()')
+import re
+s=re.sub(r'(release|getByName\("release"\))\s*\{',r'\1 {\n            isMinifyEnabled = false\n            isShrinkResources = false',s)
 gradle.write_text(s)
 info=u/'ios/Runner/Info.plist'
 with info.open('rb') as f:p=plistlib.load(f)

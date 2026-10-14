@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:ui';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:workmanager/workmanager.dart';
+import 'package:sqflite/sqflite.dart';
 import '../core/codec.dart';
 import 'repository.dart';
 import 'backups.dart';
@@ -32,10 +33,13 @@ class Sheets {
     if(automatic) {await Workmanager().registerPeriodicTask('au.monster.tracker.plus.sync','au.monster.tracker.plus.sync',frequency:const Duration(minutes:15),constraints:Constraints(networkType:NetworkType.connected));}
     else {await Workmanager().cancelByUniqueName('au.monster.tracker.plus.sync');}
   }
-  static Future<void> upload(Obj state) async {
+  static Future<void> upload(Obj state,{bool force=false}) async {
     final url=await secrets.read(key:'sheets-url'), token=await secrets.read(key:'sheets-token');
     if(url==null || token==null)throw const FormatException('Configure Google Sheets first.');
-    final records=syncRecords(state), client=HttpClient()..connectionTimeout=const Duration(seconds:20);
+    final repo=await Repository.open(migrate:false);
+    final acknowledged=await repo.db.query('sync_ack',where:'destination=? AND business_id=?',whereArgs:[url,state['businessId']]);
+    final hashes={for(final a in acknowledged) a['record_id']:a['hash']};
+    final records=syncRecords(state).where((r)=>force || hashes[r['id']]!=digest(r)).toList(), client=HttpClient()..connectionTimeout=const Duration(seconds:20);
     try {
       for(var i=0;i<records.length;i+=50) {
         final batch=records.skip(i).take(50).toList();final request=await client.postUrl(Uri.parse(url));request.followRedirects=false;request.headers.contentType=ContentType.json;
@@ -44,9 +48,10 @@ class Sheets {
         if(response.statusCode!=200)throw const FormatException('Sheets endpoint unavailable.');
         final text=await utf8.decoder.bind(response).join().timeout(const Duration(seconds:30));if(text.length>16384)throw const FormatException('Invalid Sheets response.');
         final reply=obj(jsonDecode(text));if(reply['ok']!=true || reply['accepted']!=batch.length)throw const FormatException('Upload rejected. Update the receiver and check its token.');
+        await repo.db.transaction((txn) async {for(final record in batch){await txn.insert('sync_ack',{'destination':url,'business_id':state['businessId'],'record_id':record['id'],'hash':digest(record)},conflictAlgorithm:ConflictAlgorithm.replace);}});
       }
       await secrets.write(key:'sheets-last',value:DateTime.now().toIso8601String());await secrets.write(key:'sheets-error',value:'');
-    } catch(e) {await secrets.write(key:'sheets-error',value:'Upload incomplete. Records remain on this phone. Retry when connected.');rethrow;} finally {client.close(force:true);}
+    } catch(e) {await secrets.write(key:'sheets-error',value:'Upload incomplete. Records remain on this phone. Retry when connected.');rethrow;} finally {client.close(force:true);await repo.close();}
   }
 }
 @pragma('vm:entry-point')

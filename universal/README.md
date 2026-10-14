@@ -68,8 +68,8 @@ empty installation transfers that business; it does not create automatic sharing
 Home shows inventory value, estimated net profit and in-app low-stock alerts.
 Products have a name, category, variant, photo, barcode, minimum stock, purchase
 cost and selling price. Each variant is an independent stock item. Sale/restock
-forms take a quantity and **total** amount; changing quantity does not silently
-change the entered total. Missing/damaged stock, manual refunds, explicit physical
+forms suggest a quantity × unit-price total until you edit the **total** amount
+yourself. Custom totals support bundles and negotiated prices. Missing/damaged stock, manual refunds, explicit physical
 returns and append-only corrections are supported. Prices never reprice history.
 
 Receipts accept original JPG/PNG/PDF attachments, camera images and offline text
@@ -95,7 +95,10 @@ readable; new backups use `BUSINESSBK1`. Passwords cannot be recovered. Schedule
 passwords and Sheets tokens are stored using platform secure storage and excluded
 from portable exports. Schedules must be configured again after transferring phones.
 
-Scheduled recovery keeps seven verified encrypted app-private copies. These are
+Scheduled recovery keeps seven verified encrypted app-private copies and can
+copy them to a user-selected document-provider folder, with byte-for-byte readback
+verification. Provider access, including iCloud/Drive behaviour, requires device
+verification. Original Android recovery copies remain exportable. These are
 not protection against uninstalling, clearing data, loss or device reset: export
 copies outside the app as well. Manual export uses the system document picker.
 Foreground/resume retries and OS-managed background jobs handle optional uploads
@@ -112,7 +115,8 @@ Use a separate spreadsheet/token for each independent business.
 
 The `UniversalRecords` tab receives normalized events, versioned product metadata,
 refunds, supplier documents, original audit/delivery records and receipt metadata.
-Photos/PDF bytes, backup passwords and pairing tokens are not uploaded. Retries
+Photos/PDF bytes, backup passwords and pairing tokens are not uploaded. Automatic jobs send only records not acknowledged locally; manual Upload now
+resends the complete mirror. Retries
 are idempotent by business ID + record ID; conflicts are rejected. Do not edit
 receiver-managed rows. Notes remain inside JSON text cells to avoid formula
 execution. This is an audit mirror, not a ready-made financial dashboard or backup.

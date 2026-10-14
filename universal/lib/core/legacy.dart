@@ -1,12 +1,14 @@
 import 'dart:convert';
 import 'codec.dart';
 import 'engine.dart';
+import 'legacy_contract.dart';
 
 Obj importLegacy(String text) {
   final root=obj(strictJson(text)), version=integer(root['version'],1,6);
   if(root['format']!='monster-tracker-offline' || root['currency']!='AUD' || root['timeZone']!='Australia/Perth') throw const FormatException('Unsupported legacy backup.');
   final unsigned={...root}..remove('sha256');
   if(digest(unsigned)!=root['sha256']) throw const FormatException('Backup checksum failed. Nothing imported.');
+  validateLegacyContract(root);
   final source=objects(root['events']); if(source.length<2 || source.length>10000) throw const FormatException('Invalid legacy history.');
   final opening=[{'id':'opening-purchase-v1','type':'restock','quantity':24,'cost':5000,'note':'Opening purchase; date unknown'}, {'id':'opening-missing-v1','type':'missing','quantity':4,'cost':0,'note':'Imported from existing Log row 2; date unknown'}];
   for(var i=0;i<2;i++) { final e=source[i];for(final k in opening[i].keys) {if(e[k]!=opening[i][k]) throw const FormatException('Opening records were changed.');}if(e['timestamp']!=null || e['payment']!='none' || e['revenue']!=0 || e['fee']!=0 || e['target']!=null) throw const FormatException('Invalid opening history.'); }
@@ -86,6 +88,7 @@ Obj mergeBackup(Obj current, Obj incoming) {
   validateState(current);validateState(incoming);
   if(objects(current['events']).isEmpty && objects(current['products']).isEmpty)return clone(incoming);
   if(canonical(current)==canonical(incoming))return clone(current);
+  if(incoming['businessId']=='' && current['legacy']!=null && incoming['legacy']!=null){final a=clone(obj(current['legacy']))..remove('sha256')..remove('exportedAt'),b=clone(obj(incoming['legacy']))..remove('sha256')..remove('exportedAt');if(canonical(a)==canonical(b))return clone(current);}
   final old=objects(current['events']), next=objects(incoming['events']);
   if(current['businessId']==incoming['businessId'] && canonical(next.take(old.length).toList())==canonical(old) && canonical(current['legacy'])==canonical(incoming['legacy'])) {
     final restored=clone(incoming), receiptIds={for(final a in objects(restored['attachments'])) a['id']:a};

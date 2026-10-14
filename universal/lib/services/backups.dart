@@ -2,6 +2,8 @@ import 'dart:convert';
 import 'dart:typed_data';
 import 'dart:io';
 import 'package:cryptography/cryptography.dart';
+import 'package:backup_destination/backup_destination.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
 import '../core/codec.dart';
@@ -35,13 +37,17 @@ class Backups {
   static Future<String?> export(String name,List<int> bytes) => FilePicker.platform.saveFile(dialogTitle:'Save backup outside this app',fileName:name,bytes:Uint8List.fromList(bytes));
   static Future<List<File>> recoveryFiles() async {
     final folder=Directory('${(await getApplicationSupportDirectory()).path}/recovery');
-    if(!await folder.exists())return [];
-    return folder.listSync().whereType<File>().toList()..sort((a,b)=>b.path.compareTo(a.path));
+    final out=await folder.exists()?folder.listSync().whereType<File>().toList():<File>[];
+    if(Platform.isAndroid){final legacy=Directory('${(await getApplicationSupportDirectory()).path}/encrypted-recovery');if(await legacy.exists())out.addAll(legacy.listSync().whereType<File>().where((f)=>f.path.endsWith('.monsterbackup')));}
+    return out..sort((a,b)=>b.lastModifiedSync().compareTo(a.lastModifiedSync()));
   }
   static Future<void> recovery(Obj state,String p) async {
     final folder=Directory('${(await getApplicationSupportDirectory()).path}/recovery');await folder.create(recursive:true);
     final bytes=await encrypt(state,p), file=File('${folder.path}/${DateTime.now().millisecondsSinceEpoch}.businessbk');
     await file.writeAsBytes(bytes,flush:true);await decode(await file.readAsBytes(),p);
-    final files=folder.listSync().whereType<File>().toList()..sort((a,b)=>b.path.compareTo(a.path));for(final old in files.skip(7)) {await old.delete();}
+    const secure=FlutterSecureStorage(iOptions:IOSOptions(accessibility:KeychainAccessibility.first_unlock));
+    final destination=await secure.read(key:'backup-folder');
+    try{if(destination!=null)await BackupDestination.write(destination,file.uri.pathSegments.last,bytes);}
+    finally{final files=folder.listSync().whereType<File>().toList()..sort((a,b)=>b.path.compareTo(a.path));for(final old in files.skip(7)) {await old.delete();}}
   }
 }

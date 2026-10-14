@@ -1,3 +1,18 @@
+# Universal Business Tracker — Flutter rebuild
+
+The shared Android/iPhone application lives in [universal/](universal/README.md).
+It starts from the complete 1.6.3 source, retains Android package
+`au.monster.tracker.plus`, and introduces version 2.0.0 (11). Use the
+**Universal tracker** workflow and its verified Android update artifact.
+The original Java application below remains the migration/accounting reference.
+The Flutter app has no Tap to Pay or store-publication workflow.
+
+See [migration, signing and iPhone setup](universal/README.md) and the
+[privacy-policy draft](universal/PRIVACY_DRAFT.md). Do not uninstall your current
+app to resolve an update error; export a full backup before installing.
+
+---
+
 # Monster Tracker 1.6.3
 
 Installs as **Monster Tracker Plus** alongside the original app. Export a JSON backup from the original, then import it into Plus to transfer your records safely.
