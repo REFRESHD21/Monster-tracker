@@ -1,11 +1,17 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:business_tracker/core/codec.dart';
 import 'package:business_tracker/core/engine.dart';
 import 'package:business_tracker/core/legacy.dart';
 import 'package:business_tracker/services/backups.dart';
 void main(){
+  test('recovery files are authenticated before finalizing; failed writes retain the old copy',() async {
+    final directory=await Directory.systemTemp.createTemp('tracker-recovery-');
+    try{final s=emptyState(),target=File('${directory.path}/verified.businessbk');const p='portable-password';final valid=await Backups.encrypt(s,p);await Backups.writeVerified(target,valid,p);final before=await target.readAsBytes();final bad=Uint8List.fromList(valid);bad[bad.length-1]^=1;await expectLater(Backups.writeVerified(target,bad,p),throwsFormatException);expect(await target.readAsBytes(),before);expect(File('${target.path}.partial').existsSync(),false);expect(await Backups.decode(before,p),s);}finally{await directory.delete(recursive:true);}
+  });
+  test('ordinary JSON backups accept the whitespace supported by the Java parser',()async{final s=emptyState(),bytes=utf8.encode(' \n\t${encodeBackup(s)}');expect(Backups.isPlainJson(bytes),true);expect(await Backups.decode(bytes,''),s);});
   test('all six original backup versions remain readable without discarding source fields',(){
     for(final backup in strictJson(File('test/fixtures/legacy-versions.json').readAsStringSync()) as List){final s=importLegacy(canonical(backup));expect(s['legacy'],backup);expect(decodeBackup(encodeBackup(s)),s);}
   });

@@ -5,6 +5,7 @@ import 'package:business_tracker/core/codec.dart';
 import 'package:business_tracker/core/engine.dart';
 import 'package:business_tracker/core/legacy.dart';
 void main() {
+  test('write limits match portable reader limits before replay',(){final s=emptyState();s['events']=List.filled(100001,<String,dynamic>{});expect(()=>validateState(s),throwsA(isA<FormatException>().having((e)=>e.message,'message',contains('History limit'))));});
   test('large SQLite chunks preserve Unicode across platform UTF-8 messages',(){
     final text='${'x'*131071}😀 café after';
     expect(stateChunks(text).map((part)=>utf8.decode(utf8.encode(part))).join(),text);

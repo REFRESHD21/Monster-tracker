@@ -25,7 +25,7 @@ class Backups {
   static Future<Obj> decode(List<int> data,String p) async {
     if(data.length>64*1024*1024+1024)throw const FormatException('Backup exceeds 64 MB.');
     final bytes=Uint8List.fromList(data);
-    if(bytes.isNotEmpty && bytes.first==123)return decodeBackup(utf8.decode(bytes));
+    if(isPlainJson(bytes))return decodeBackup(utf8.decode(bytes));
     password(p);
     final m=bytes.length>=magic.length && utf8.decode(bytes.take(magic.length).toList(),allowMalformed:true)==utf8.decode(magic)?magic:legacyMagic;
     final headerLength=m.length+4+16+12+4;
@@ -35,20 +35,26 @@ class Backups {
     try {final plain=await AesGcm.with256bits().decrypt(SecretBox(bytes.sublist(headerLength,bytes.length-16),nonce:nonce,mac:Mac(bytes.sublist(bytes.length-16))),secretKey:await key(p,salt),aad:bytes.sublist(0,headerLength));return decodeBackup(utf8.decode(plain));}
     catch(_){throw const FormatException('Wrong password or damaged backup. No records changed.');}
   }
+  static bool isPlainJson(List<int> bytes) {final first=bytes.where((b)=>![9,10,13,32].contains(b)).firstOrNull;return first==123;}
+  static Future<void> writeVerified(File target,Uint8List bytes,String p) async {
+    final partial=File('${target.path}.partial');
+    try{await partial.writeAsBytes(bytes,flush:true);await decode(await partial.readAsBytes(),p);await partial.rename(target.path);}
+    finally{if(await partial.exists())await partial.delete();}
+  }
   static Future<String?> export(String name,List<int> bytes) => FilePicker.platform.saveFile(dialogTitle:'Save backup outside this app',fileName:name,bytes:Uint8List.fromList(bytes));
   static Future<List<File>> recoveryFiles() async {
     final folder=Directory('${(await getApplicationSupportDirectory()).path}/recovery');
-    final out=await folder.exists()?folder.listSync().whereType<File>().toList():<File>[];
+    final out=await folder.exists()?folder.listSync().whereType<File>().where((f)=>f.path.endsWith('.businessbk')).toList():<File>[];
     if(Platform.isAndroid){final legacy=Directory('${(await getApplicationSupportDirectory()).path}/encrypted-recovery');if(await legacy.exists())out.addAll(legacy.listSync().whereType<File>().where((f)=>f.path.endsWith('.monsterbackup')));}
     return out..sort((a,b)=>b.lastModifiedSync().compareTo(a.lastModifiedSync()));
   }
   static Future<void> recovery(Obj state,String p) async {
     final folder=Directory('${(await getApplicationSupportDirectory()).path}/recovery');await folder.create(recursive:true);
     final bytes=await encrypt(state,p), file=File('${folder.path}/${DateTime.now().millisecondsSinceEpoch}-${const Uuid().v4()}.businessbk');
-    await file.writeAsBytes(bytes,flush:true);await decode(await file.readAsBytes(),p);
+    await writeVerified(file,bytes,p);
     const secure=FlutterSecureStorage(iOptions:IOSOptions(accessibility:KeychainAccessibility.first_unlock));
     final destination=await secure.read(key:'backup-folder');
     try{if(destination!=null)await BackupDestination.write(destination,file.uri.pathSegments.last,bytes);}
-    finally{final files=folder.listSync().whereType<File>().toList()..sort((a,b)=>b.path.compareTo(a.path));for(final old in files.skip(7)) {await old.delete();}}
+    finally{final files=folder.listSync().whereType<File>().where((f)=>f.path.endsWith('.businessbk')).toList()..sort((a,b)=>b.path.compareTo(a.path));for(final old in files.skip(7)) {await old.delete();}}
   }
 }

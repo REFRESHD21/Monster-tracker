@@ -85,6 +85,13 @@ Reporting uses AUD integer cents, FIFO and Perth dates, including the Australian
 financial year. Financial CSV amounts are **integer cents** and headers identify the
 export's units in its filename. Inventory value is current, not a period-end snapshot.
 GST snapshots are entered explicitly; eligibility is not inferred from a receipt.
+Settings also exports sales/stock history with quantities and correction references.
+Portable limits are 64 MB, 100,000 normalized events and 10,000 products; oversize
+writes fail visibly before changing records.
+
+After this framework update, reconfigure Google Sheets and automatic backup
+scheduling/folder delivery in Settings. Existing portable backups, original Android
+recovery copies and their passwords remain usable.
 
 ## Backups and automatic work
 
@@ -95,7 +102,9 @@ readable; new backups use `BUSINESSBK1`. Passwords cannot be recovered. Schedule
 passwords and Sheets tokens are stored using platform secure storage and excluded
 from portable exports. Schedules must be configured again after transferring phones.
 
-Scheduled recovery keeps seven verified encrypted app-private copies and can
+Recovery copies are written to a temporary file, authenticated and atomically
+renamed before they become selectable. Scheduled recovery keeps seven verified
+encrypted app-private copies and can
 copy them to a user-selected document-provider folder, with byte-for-byte readback
 verification. Provider access, including iCloud/Drive behaviour, requires device
 verification. Original Android recovery copies remain exportable. These are

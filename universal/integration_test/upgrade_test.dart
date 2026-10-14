@@ -30,6 +30,7 @@ void main(){
     final large=clone(repo.state);large['businessName']='My skincare business';final photoBytes=List<int>.filled(1600000,42);photoBytes.setAll(0,utf8.encode('%PDF-1.4'));(large['attachments'] as List).add({'id':'large-receipt-0001','eventId':'device-restock-001','mime':'application/pdf','data':base64Encode(photoBytes),'sha256':bytesHash(photoBytes)});await repo.save(large);
     const password='portable-test-password';final encrypted=await Backups.encrypt(repo.state,password),restored=await Backups.decode(encrypted,password);expect(restored,repo.state);
     expect(()=>Backups.decode(encrypted,'wrong-password'),throwsFormatException);
+    await Backups.recovery(repo.state,password);final recovery=(await Backups.recoveryFiles()).firstWhere((f)=>f.path.endsWith('.businessbk'));expect(await Backups.decode(await recovery.readAsBytes(),password),repo.state);expect(File('${recovery.path}.partial').existsSync(),false);
     final before=canonical(repo.state);await repo.restore(restored);expect(canonical(repo.state),before);
     await tester.pumpWidget(const SizedBox());await tester.pumpAndSettle();await repo.close();
     final reopened=await Repository.open();expect(canonical(reopened.state),before);expect(validateState(reopened.state).book.stock('device-product-001'),6);await reopened.close();
