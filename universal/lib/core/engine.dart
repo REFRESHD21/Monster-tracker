@@ -45,7 +45,7 @@ class Accounts {
 }
 Accounts calculate(List<Obj> events) {
   final book = Book(), history = <String, Action>{}, rows = <Obj>[];
-  final undone = <String>{}, returned = <String, int>{}, refunded = <String, int>{}, refundQuantities = <String, int>{};
+  final undone = <String>{}, returned = <String, int>{}, refunded = <String, int>{};
   for (final e in events) {
     final id = string(e['id'], 100), type = string(e['type']);
     if (!RegExp(r'^[A-Za-z0-9-]{10,100}$').hasMatch(id) || history.containsKey(id)) throw const FormatException('Duplicate or invalid transaction ID.');
@@ -73,6 +73,7 @@ Accounts calculate(List<Obj> events) {
         }
         er.add(next);
       }
+      if(source.e['type']=='refund') refunded[source.e['target']] = (refunded[source.e['target']] ?? 0) - (source.e['revenue'] as int);
       undone.add(e['target'] as String);
     } else if (type == 'transfer') {
       if(q < 1 || e['from'] == e['to']) throw const FormatException('Invalid transfer.');
@@ -85,7 +86,7 @@ Accounts calculate(List<Obj> events) {
       final after = before + delta;
       if (after < 0 || after > sale.e['revenue'] || sale.e['revenue'] == 0) throw const FormatException('Refund exceeds original sale.');
       refunded[e['target']] = after;
-      if(type == 'refund') refundQuantities[id] = q;
+      if(type == 'refund' && sale.e['payment']=='cash' && fee!=0) throw const FormatException('Cash refunds cannot have fees.');
       int accumulated = 0;
       final allocations = objects(sale.e['allocations']);
       final gstDelta = (sale.e['outputGst'] as int) * after ~/ (sale.e['revenue'] as int) - (sale.e['outputGst'] as int) * before ~/ (sale.e['revenue'] as int);

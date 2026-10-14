@@ -1,0 +1,10 @@
+import {readFileSync} from 'node:fs';import vm from 'node:vm';import assert from 'node:assert/strict';
+const c=vm.createContext({});vm.runInContext(readFileSync(new URL('./Universal.gs',import.meta.url),'utf8'),c);
+const business='business-00000001',record={id:'event-sale-0001',kind:'event',body:{note:'=IMPORTXML("bad")',quantity:7,revenue:2450}};
+const rows=c.universalPrepare(business,[record],new Map());assert.equal(rows.length,1);assert.ok(rows[0][4].startsWith('{'));
+const map=new Map([[business+'|'+record.id,c.universalCanonical(record)]]);assert.equal(c.universalPrepare(business,[record],map).length,0);
+assert.equal(c.universalPrepare('business-00000002',[record],map).length,1);
+assert.throws(()=>c.universalPrepare(business,[{...record,body:{quantity:8}}],map),/conflict/);
+assert.throws(()=>c.universalPrepare(business,[{...record,id:'=FORMULA'}],map),/Invalid/);
+assert.throws(()=>c.universalPrepare(business,[{...record,body:{amount:0.5}}],map),/number/);
+console.log('Universal Sheets: retry deduplication, business isolation, conflicts, integer amounts and formula-safe cells passed.');

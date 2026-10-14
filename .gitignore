@@ -20,3 +20,4 @@ universal/android/local.properties
 universal/ios/Pods/
 universal/ios/.symlinks/
 **/device-evidence/
+**/__pycache__/

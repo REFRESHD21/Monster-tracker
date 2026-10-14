@@ -1,0 +1,41 @@
+import 'dart:io';
+import 'package:flutter/services.dart';
+import 'package:path/path.dart' as path;
+import 'package:sqflite/sqflite.dart';
+import 'package:uuid/uuid.dart';
+import '../core/codec.dart';
+import '../core/engine.dart';
+import '../core/legacy.dart';
+
+class Repository {
+  final Database db; int revision=0; late Obj state;
+  Repository._(this.db);
+  static Future<Repository> open({bool migrate=true}) async {
+    final db=await openDatabase(path.join(await getDatabasesPath(),'business-tracker-v1.db'),version:1,onCreate:(db,_) async {
+      await db.execute('CREATE TABLE tracker (id INTEGER PRIMARY KEY CHECK(id=1),revision INTEGER NOT NULL,body TEXT NOT NULL)');
+      await db.execute('CREATE TABLE safety (id INTEGER PRIMARY KEY CHECK(id=1),legacy TEXT NOT NULL)');
+      await db.execute("CREATE TRIGGER keep_safety BEFORE UPDATE ON safety BEGIN SELECT RAISE(ABORT,'Original migration backup is immutable'); END");
+      await db.execute("CREATE TRIGGER retain_safety BEFORE DELETE ON safety BEGIN SELECT RAISE(ABORT,'Original migration backup is immutable'); END");
+    });
+    final r=Repository._(db);final rows=await db.query('tracker');
+    if(rows.isNotEmpty){r.revision=rows.first['revision'] as int;r.state=obj(strictJson(rows.first['body'] as String));validateState(r.state);return r;}
+    var initial=emptyState();
+    if(migrate && Platform.isAndroid) {
+      final legacy=await const MethodChannel('au.monster.tracker.plus/migration').invokeMethod<String>('legacyBackup');
+      if(legacy!=null) {initial=importLegacy(legacy);await db.insert('safety',{'id':1,'legacy':legacy},conflictAlgorithm:ConflictAlgorithm.ignore);}
+    }
+    initial['businessId']=const Uuid().v4();r.state=initial;await r.save(initial);return r;
+  }
+  Future<void> save(Obj candidate) async {
+    validateState(candidate);final text=canonical(candidate);if(text.length>64*1024*1024)throw const FormatException('Data exceeds portable backup limit. Export and contact support.');
+    await db.transaction((txn) async {
+      final rows=await txn.query('tracker');
+      if(rows.isEmpty){await txn.insert('tracker',{'id':1,'revision':1,'body':text});}
+      else {if(rows.first['revision']!=revision)throw StateError('Records changed in another task. Reopen and try again.');await txn.update('tracker',{'revision':revision+1,'body':text},where:'id=1');}
+    });
+    revision++;state=clone(candidate);
+  }
+  Future<void> append(Obj e, [Obj? attachment]) async {final next=clone(state);(next['events'] as List).add(e);if(attachment!=null)(next['attachments'] as List).add({...attachment,'eventId':e['id']});await save(next);}
+  Future<void> restore(Obj incoming) async {final next=mergeBackup(state,incoming);if((next['businessId'] as String).isEmpty)next['businessId']=state['businessId'];await save(next);}
+  Future<void> close()=>db.close();
+}
