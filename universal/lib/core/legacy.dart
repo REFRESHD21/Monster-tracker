@@ -83,12 +83,12 @@ Obj decodeBackup(String text) {
   if(s['legacy']!=null) {final imported=importLegacy(canonical(s['legacy']));final count=integer(s['legacyCount'],0,100100);if(count!=objects(imported['events']).length || canonical(objects(s['events']).take(count).toList())!=canonical(imported['events'])) throw const FormatException('Historical migration records changed.');}
   return s;
 }
-String encodeBackup(Obj state) {validateState(state);final root=<String,dynamic>{'format':'business-tracker-backup','version':1,'state':state};root['sha256']=digest(root);return canonical(root);}
+String encodeBackup(Obj state) {validateState(state);final root=<String,dynamic>{'format':'business-tracker-backup','version':1,'state':state};root['sha256']=digest(root);final text=canonical(root);if(utf8.encode(text).length>64*1024*1024)throw const FormatException('Backup exceeds 64 MB. Nothing exported.');return text;}
 Obj mergeBackup(Obj current, Obj incoming) {
   validateState(current);validateState(incoming);
   if(objects(current['events']).isEmpty && objects(current['products']).isEmpty)return clone(incoming);
   if(canonical(current)==canonical(incoming))return clone(current);
-  if(incoming['businessId']=='' && current['legacy']!=null && incoming['legacy']!=null){final a=clone(obj(current['legacy']))..remove('sha256')..remove('exportedAt'),b=clone(obj(incoming['legacy']))..remove('sha256')..remove('exportedAt');if(canonical(a)==canonical(b))return clone(current);}
+  if(incoming['businessId']=='' && current['legacy']!=null && incoming['legacy']!=null){final a=clone(obj(current['legacy']))..remove('sha256')..remove('exportedAt'),b=clone(obj(incoming['legacy']))..remove('sha256')..remove('exportedAt');if(canonical(a)==canonical(b)){if(canonical(objects(current['events']).take(objects(incoming['events']).length).toList())!=canonical(incoming['events']))throw const FormatException('Conflicting migrated transaction.');return clone(current);}}
   final old=objects(current['events']), next=objects(incoming['events']);
   if(current['businessId']==incoming['businessId'] && canonical(next.take(old.length).toList())==canonical(old) && canonical(current['legacy'])==canonical(incoming['legacy'])) {
     final restored=clone(incoming), receiptIds={for(final a in objects(restored['attachments'])) a['id']:a};
