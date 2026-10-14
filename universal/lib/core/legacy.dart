@@ -27,6 +27,9 @@ Obj importLegacy(String text) {
   final requests={for(final r in objects(refundData['requests'])) r['id'] as String:r};
   final returnSources=<String,String>{};
   for(final r in objects(refundData['returns'])) {final request=requests[r['requestId']];if(request==null) throw const FormatException('Missing refund request.');returnSources[r['eventId'] as String]=request['saleId'] as String;}
+  final reserved=<String,int>{},latest=<String,Obj>{};
+  for(final o in objects(refundData['observations'])) {latest[o['requestId'] as String]=o;}
+  for(final r in requests.values) {final status=latest[r['id']]?['status'];if(status==null || ['pending','requires_action'].contains(status))reserved[r['saleId'] as String]=(reserved[r['saleId']] ?? 0)+(r['amount'] as int);}
   final events=<Obj>[];
   final transfers=objects(catalog['transfers'] ?? []);
   final positions={for(var i=0;i<source.length;i++) source[i]['id'] as String:i};
@@ -42,7 +45,7 @@ Obj importLegacy(String text) {
     final e=source[i], type=e['type'];
     if(type=='single' && e['quantity']!=1 || type=='deal' && e['quantity']!=2 || i>=2 && e['timestamp']==null) throw const FormatException('Invalid legacy sale/date.');
     final tax=taxes[e['id']] ?? {'inputGst':0,'outputGst':0};
-    events.add({'id':e['id'],'type':returnSources.containsKey(e['id'])?'return':type,'date':time(e['timestamp']),'recordedAt':time(e['recordedAt']),'quantity':e['quantity'],'payment':e['payment'],'revenue':e['revenue'],'fee':e['fee'],'cost':e['cost'],'note':e['note'],'target':returnSources[e['id']] ?? e['target'],'inputGst':tax['inputGst'],'outputGst':tax['outputGst'],'allocations':type=='undo'?[]:allocations[e['id']] ?? [{'productId':legacyProduct,'quantity':e['quantity']}]});
+    events.add({'id':e['id'],'type':returnSources.containsKey(e['id'])?'return':type,'date':time(e['timestamp']),'recordedAt':time(e['recordedAt']),'quantity':e['quantity'],'payment':e['payment'],'revenue':e['revenue'],'fee':e['fee'],'cost':e['cost'],'note':e['note'],'target':returnSources[e['id']] ?? e['target'],'inputGst':tax['inputGst'],'outputGst':tax['outputGst'],if((reserved[e['id']] ?? 0)>0)'reservedRefund':reserved[e['id']],'allocations':type=='undo'?[]:allocations[e['id']] ?? [{'productId':legacyProduct,'quantity':e['quantity']}]});
   }
   while(next<transfers.length) {move(transfers[next++]);}
   final docs=objects(business['documents'] ?? []);
@@ -72,6 +75,7 @@ Obj importLegacy(String text) {
 Obj decodeBackup(String text) {
   final root=obj(strictJson(text));
   if(root['format']=='monster-tracker-offline')return importLegacy(text);
+  if(root['format']!='business-tracker-backup' || root['version']!=1)throw const FormatException('Unsupported backup format.');
   final unsigned={...root}..remove('sha256');if(root['sha256']!=digest(unsigned))throw const FormatException('Backup checksum failed.');
   final s=obj(root['state']); validateState(s);
   if(s['legacy']!=null) {final imported=importLegacy(canonical(s['legacy']));final count=integer(s['legacyCount'],0,100100);if(count!=objects(imported['events']).length || canonical(objects(s['events']).take(count).toList())!=canonical(imported['events'])) throw const FormatException('Historical migration records changed.');}
@@ -83,6 +87,12 @@ Obj mergeBackup(Obj current, Obj incoming) {
   if(objects(current['events']).isEmpty && objects(current['products']).isEmpty)return clone(incoming);
   if(canonical(current)==canonical(incoming))return clone(current);
   final old=objects(current['events']), next=objects(incoming['events']);
+  if(current['businessId']==incoming['businessId'] && canonical(next.take(old.length).toList())==canonical(old) && canonical(current['legacy'])==canonical(incoming['legacy'])) {
+    final restored=clone(incoming), receiptIds={for(final a in objects(restored['attachments'])) a['id']:a};
+    for(final a in objects(current['attachments'])) {if(receiptIds.containsKey(a['id']) && canonical(receiptIds[a['id']])!=canonical(a))throw const FormatException('Conflicting receipt.');if(!receiptIds.containsKey(a['id']))(restored['attachments'] as List).add(a);}
+    for(final p in objects(current['products'])) {if(!objects(restored['products']).any((n)=>n['id']==p['id']))(restored['products'] as List).add(p);}
+    validateState(restored);return restored;
+  }
   if(current['businessId']!=incoming['businessId'] || canonical(old.take(next.length).toList())!=canonical(next) || canonical(current['legacy'])!=canonical(incoming['legacy'])) throw const FormatException('Different or conflicting history. Restore into an empty installation; current records were not changed.');
   // A previously imported backup must never roll back later records or product settings.
   return clone(current);

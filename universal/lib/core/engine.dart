@@ -49,13 +49,14 @@ Accounts calculate(List<Obj> events) {
   for (final e in events) {
     final id = string(e['id'], 100), type = string(e['type']);
     if (!RegExp(r'^[A-Za-z0-9-]{10,100}$').hasMatch(id) || history.containsKey(id)) throw const FormatException('Duplicate or invalid transaction ID.');
-    time(e['date']); time(e['recordedAt']); string(e['note']);
+    if(e['date']!=null)integer(e['date'],946684800000,4102444800000);integer(e['recordedAt'],946684800000,4102444800000);string(e['note']);
     final q = integer(e['quantity'], 0, 10000);
     for (final k in ['revenue','fee','cost','inputGst','outputGst']) { integer(e[k]); }
     final int revenue = e['revenue'], fee = e['fee'], cost = e['cost'], input = e['inputGst'], output = e['outputGst'];
     if (input > cost || output > revenue) throw const FormatException('Invalid tax snapshot.');
     final parts = <Lot>[], er = <Obj>[];
     if (type == 'undo') {
+      if(q!=0 || revenue!=0 || fee!=0 || cost!=0 || input!=0 || output!=0 || e['payment']!='none' || objects(e['allocations']).isNotEmpty)throw const FormatException('Invalid correction fields.');
       final source = history[e['target']];
       if (source == null || undone.contains(e['target']) || ['undo','transfer','refund_observation'].contains(source.e['type']) || (refunded[e['target']] ?? 0) != 0 || (returned[e['target']] ?? 0) != 0 || string(e['note']).trim().isEmpty) throw const FormatException('This record cannot be corrected. Check refunds and returns.');
       if (source.e['type'] == 'restock') {
@@ -67,24 +68,26 @@ Accounts calculate(List<Obj> events) {
       int before = 0;
       for (final r in source.rows) {
         final next = row(e, r['productId'] as String?, 'correction'); for (final k in sums) { next[k] = -(r[k] as int); }
-        if (source.e['type'] == 'restock') {
+        if (['restock','return'].contains(source.e['type'])) {
           final n = source.lots.where((p) => p.product == r['productId']).fold<int>(0, (s, p) => s + p.quantity);
           next['losses'] += share(costOf(parts) - costOf(source.lots), before, n, source.e['quantity'] as int); before += n;
         }
+        if(source.e['type']=='refund'){final sale=history[source.e['target']]!,active=refunded[source.e['target']] ?? 0;final amount=source.e['revenue'] as int;final gst=(sale.e['outputGst'] as int)*active~/(sale.e['revenue'] as int)-(sale.e['outputGst'] as int)*(active-amount)~/(sale.e['revenue'] as int);final n=objects(sale.e['allocations']).firstWhere((a)=>a['productId']==r['productId'])['quantity'] as int;next['outputGst']=share(gst,before,n,sale.e['quantity'] as int);before+=n;}
         er.add(next);
       }
       if(source.e['type']=='refund') refunded[source.e['target']] = (refunded[source.e['target']] ?? 0) - (source.e['revenue'] as int);
       undone.add(e['target'] as String);
     } else if (type == 'transfer') {
-      if(q < 1 || e['from'] == e['to']) throw const FormatException('Invalid transfer.');
+      if(q < 1 || revenue!=0 || cost!=0 || fee!=0 || input!=0 || output!=0 || e['from'] == e['to']) throw const FormatException('Invalid transfer.');
       for (final p in book.take(e['from'] as String, q)) { book.add(Lot('${p.key.split('|').first}|${e['to']}', e['to'] as String, p.age, p.quantity, p.cost)); }
     } else if (type == 'refund' || type == 'refund_observation') {
       final sale = history[e['target']];
       if (sale == null || !['single','deal','sale'].contains(sale.e['type']) || undone.contains(e['target'])) throw const FormatException('Refund needs an active original sale.');
       final before = refunded[e['target']] ?? 0;
-      final int delta = type == 'refund' ? revenue : e['delta'];
+      final int delta = type == 'refund' ? revenue : integer(e['delta'],-10000000,10000000);
+      if(type=='refund' && (revenue<1 || cost!=0 || q!=0 || input!=0 || output!=0))throw const FormatException('Invalid refund entry.');
       final after = before + delta;
-      if (after < 0 || after > sale.e['revenue'] || sale.e['revenue'] == 0) throw const FormatException('Refund exceeds original sale.');
+      if (after < 0 || after + (type=='refund'?(sale.e['reservedRefund'] as int? ?? 0):0) > sale.e['revenue'] || sale.e['revenue'] == 0) throw const FormatException('Refund exceeds original sale.');
       refunded[e['target']] = after;
       if(type == 'refund' && sale.e['payment']=='cash' && fee!=0) throw const FormatException('Cash refunds cannot have fees.');
       int accumulated = 0;
@@ -94,12 +97,13 @@ Accounts calculate(List<Obj> events) {
         final r = row(e, a['productId'] as String, 'refund'), n = a['quantity'] as int;
         r['revenue'] = -share(delta, accumulated, n, sale.e['quantity'] as int);
         r[sale.e['payment'] as String] = r['revenue'];
-        final int feeDelta = type == 'refund' ? fee : e['feeDelta'];
+        final int feeDelta = type == 'refund' ? fee : integer(e['feeDelta'],-10000000,10000000);
         r['fees'] = share(feeDelta, accumulated, n, sale.e['quantity'] as int);
         r['outputGst'] = -share(gstDelta, accumulated, n, sale.e['quantity'] as int);
         er.add(r); accumulated += n;
       }
     } else if (type == 'return') {
+      if(cost!=0 || revenue!=0 || fee!=0 || input!=0 || output!=0)throw const FormatException('Return does not record a new purchase or refund.');
       final source = history[e['target']];
       if (source == null || !['single','deal','sale'].contains(source.e['type']) || undone.contains(e['target']) || q < 1) throw const FormatException('Return needs an active original sale.');
       var skip = returned[e['target']] ?? 0, remaining = q;
@@ -108,9 +112,11 @@ Accounts calculate(List<Obj> events) {
       for (final p in source.lots) {
         final within = skip < p.quantity ? skip : p.quantity; skip -= within;
         final n = remaining < p.quantity - within ? remaining : p.quantity - within;
-        if (n > 0) { final c = p.cost * (within + n) ~/ p.quantity - p.cost * within ~/ p.quantity; final lot = p.copy(n, c); parts.add(lot); book.add(lot); final r = row(e, p.product, 'goods_return'); r['cogs'] = -c; er.add(r); remaining -= n; }
+        if (n > 0) { final c = p.cost * (within + n) ~/ p.quantity - p.cost * within ~/ p.quantity; final lot = p.copy(n, c); parts.add(lot); book.add(lot); final r = er.where((r)=>r['productId']==p.product).firstOrNull ?? row(e,p.product,'goods_return');if(!er.contains(r))er.add(r);r['cogs'] = (r['cogs'] as int)-c; remaining -= n; }
       }
+      if(objects(e['allocations']).isNotEmpty){final actual=<String,int>{};for(final p in parts){actual[p.product]=(actual[p.product] ?? 0)+p.quantity;}for(final a in objects(e['allocations'])){if(actual.remove(a['productId'])!=a['quantity'])throw const FormatException('Returned product does not match original sale.');}if(actual.isNotEmpty)throw const FormatException('Incomplete return allocation.');}
     } else if (type == 'expense') {
+      if(q!=0 || revenue!=0 || fee!=0 || output!=0 || e['payment']!='none')throw const FormatException('Invalid expense.');
       final r = row(e, null); r['expenses'] = cost - input; r['inputGst'] = input; er.add(r);
     } else if (['restock','single','deal','sale','missing','damaged','lost'].contains(type)) {
       final allocations = objects(e['allocations']);
@@ -153,7 +159,14 @@ Accounts validateState(Obj s) {
 }
 void verifyAttachment(Obj a) {
   final bytes = attachmentBytes(a);
-  if(bytes.isEmpty || bytes.length > 16*1024*1024 || bytesHash(bytes) != a['sha256'] || !['image/jpeg','image/png','application/pdf'].contains(a['mime'])) throw const FormatException('Invalid or damaged attachment.');
+  if(bytes.isEmpty || bytes.length > 16*1024*1024 || bytesHash(bytes) != a['sha256'] || attachmentMime(bytes)!=a['mime'] || !['image/jpeg','image/png','application/pdf'].contains(a['mime'])) throw const FormatException('Invalid or damaged attachment.');
 }
 
 List<int> attachmentBytes(Obj a) => base64Decode(a['data'] as String);
+
+String attachmentMime(List<int> bytes) {
+  if(bytes.length>=3 && bytes[0]==255 && bytes[1]==216 && bytes[2]==255)return 'image/jpeg';
+  if(bytes.length>=8 && canonical(bytes.take(8).toList())=='[137,80,78,71,13,10,26,10]')return 'image/png';
+  if(bytes.length>=5 && String.fromCharCodes(bytes.take(5))=='%PDF-')return 'application/pdf';
+  throw const FormatException('Choose an original JPG, PNG or PDF.');
+}

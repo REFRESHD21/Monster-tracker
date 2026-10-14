@@ -38,7 +38,13 @@ s=s.replace('sourceCompatibility = JavaVersion.VERSION_11','sourceCompatibility 
 gradle.write_text(s)
 info=u/'ios/Runner/Info.plist'
 with info.open('rb') as f:p=plistlib.load(f)
-p.update(CFBundleDisplayName='Business Tracker',NSCameraUsageDescription='Take product and receipt photos or scan product barcodes.',NSPhotoLibraryUsageDescription='Choose product and receipt photos.',NSPhotoLibraryAddUsageDescription='Save exported receipt photos.',UIBackgroundModes=['fetch','processing'],BGTaskSchedulerPermittedIdentifiers=['au.monster.tracker.plus.sync'])
+p.update(CFBundleDisplayName='Business Tracker',NSCameraUsageDescription='Take product and receipt photos or scan product barcodes.',NSPhotoLibraryUsageDescription='Choose product and receipt photos.',NSPhotoLibraryAddUsageDescription='Save exported receipt photos.',UIBackgroundModes=['fetch','processing'],BGTaskSchedulerPermittedIdentifiers=['au.monster.tracker.plus.sync','au.monster.tracker.plus.backup'])
 with info.open('wb') as f:plistlib.dump(p,f)
 pbx=u/'ios/Runner.xcodeproj/project.pbxproj';s=pbx.read_text().replace('au.monster.tracker.businessTracker','au.monster.tracker.plus').replace('IPHONEOS_DEPLOYMENT_TARGET = 13.0','IPHONEOS_DEPLOYMENT_TARGET = 15.5');pbx.write_text(s)
+pod=u/'ios/Podfile'
+if pod.exists():
+    s=pod.read_text()
+    import re
+    s=re.sub(r"#?\s*platform :ios, '[0-9.]+'", "platform :ios, '15.5'",s)
+    pod.write_text(s)
 print('Native projects prepared. Android signing key is mandatory; iOS signing remains owner configured.')

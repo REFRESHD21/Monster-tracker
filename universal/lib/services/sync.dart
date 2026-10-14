@@ -1,11 +1,12 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:workmanager/workmanager.dart';
 import '../core/codec.dart';
 import 'repository.dart';
 import 'backups.dart';
-const secrets=FlutterSecureStorage();
+const secrets=FlutterSecureStorage(iOptions:IOSOptions(accessibility:KeychainAccessibility.first_unlock));
 List<Obj> syncRecords(Obj state) {
   final out=<Obj>[];
   void add(String kind,String id,Obj body)=>out.add({'id':'$kind-$id','kind':kind,'body':body});
@@ -28,8 +29,8 @@ class Sheets {
     final u=Uri.tryParse(url.trim());
     if(u==null || u.scheme!='https' || u.host!='script.google.com' || u.hasPort || u.userInfo.isNotEmpty || u.hasQuery || u.hasFragment || !RegExp(r'^/macros/s/[A-Za-z0-9_-]+/exec$').hasMatch(u.path) || token.length<32)throw const FormatException('Enter a deployed Apps Script /exec URL and a token of at least 32 characters.');
     await secrets.write(key:'sheets-url',value:url.trim());await secrets.write(key:'sheets-token',value:token);await secrets.write(key:'sheets-auto',value:'$automatic');
-    if(automatic) {await Workmanager().registerPeriodicTask('tracker-sync','tracker-sync',frequency:const Duration(minutes:15),constraints:Constraints(networkType:NetworkType.connected));}
-    else {await Workmanager().cancelByUniqueName('tracker-sync');}
+    if(automatic) {await Workmanager().registerPeriodicTask('au.monster.tracker.plus.sync','au.monster.tracker.plus.sync',frequency:const Duration(minutes:15),constraints:Constraints(networkType:NetworkType.connected));}
+    else {await Workmanager().cancelByUniqueName('au.monster.tracker.plus.sync');}
   }
   static Future<void> upload(Obj state) async {
     final url=await secrets.read(key:'sheets-url'), token=await secrets.read(key:'sheets-token');
@@ -50,10 +51,11 @@ class Sheets {
 }
 @pragma('vm:entry-point')
 void backgroundTasks() {
+  DartPluginRegistrant.ensureInitialized();
   Workmanager().executeTask((task,input) async {
     Repository? r;
     try {r=await Repository.open(migrate:false);
-      if(task=='tracker-backup') {final p=await secrets.read(key:'backup-password');if(p!=null)await Backups.recovery(r.state,p);}
+      if(task=='au.monster.tracker.plus.backup') {final p=await secrets.read(key:'backup-password');if(p!=null) {final every=await secrets.read(key:'backup-frequency'),last=int.tryParse(await secrets.read(key:'backup-last') ?? '0') ?? 0;if(DateTime.now().millisecondsSinceEpoch-last>(every=='weekly'?7:1)*86400000){await Backups.recovery(r.state,p);await secrets.write(key:'backup-last',value:'${DateTime.now().millisecondsSinceEpoch}');}}}
       else if(await secrets.read(key:'sheets-auto')=='true') {await Sheets.upload(r.state);}
       return true;
     } catch(_) {return false;} finally {await r?.close();}
