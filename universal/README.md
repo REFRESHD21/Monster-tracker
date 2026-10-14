@@ -1,3 +1,35 @@
+## 2.0.1: faster sales and safe product removal
+
+Record sale is available above the bottom navigation on every screen. Tap a
+product in the active Products list (or choose one from Record sale), select
+1 item, an explicitly configured 2-item deal, or a custom quantity, check the
+total and visible Cash/Card choice, and confirm once. Fees, GST, receipts/OCR,
+date and notes remain under More details. The last successful sale's payment
+method is saved atomically with that sale and is always visible next time.
+One draft ID plus a disabled confirmation while saving prevents duplicate taps.
+
+Configure each product's optional **2-item deal TOTAL** in Product options →
+Edit product / prices. A blank value disables it. Existing products start with
+no deal; no global or another product's deal is inherited. Custom quantities
+use the normal unit price until the total is manually changed. Existing sale
+amounts are never recalculated. New sales also retain a product-name snapshot.
+
+Use Product options → Remove / archive product. Permanent deletion is allowed
+only with zero stock, no history and no other references. Products with history
+or references may be archived once stock and pending items are resolved. The
+removal dialog explains blockers. Archived products are excluded from active
+lists, low-stock alerts, barcode sales and sale/transfer pickers. Products →
+Archived products offers Restore and displays any stock received later through
+a historical return. History, names, reports, receipts and FIFO costs remain.
+Archive/deal settings and the last payment method are included in full backups.
+Older 2.0.0 backups remain readable; their missing settings mean active/no deal.
+
+The Android version is **2.0.1 (12)** with the same package and existing signing
+certificate. CI opens the actual shipped 2.0.0 release on populated records,
+then installs 2.0.1 over it without uninstalling. Physical-device checks and
+live Sheets setup remain as described below. No payment-provider integration
+or store publication is part of this update.
+
 # Business Tracker 2.0
 
 Shared Flutter application for Android and iPhone, developed from Monster Tracker

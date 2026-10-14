@@ -7,6 +7,7 @@ import 'package:uuid/uuid.dart';
 import '../core/codec.dart';
 import '../core/engine.dart';
 import '../core/legacy.dart';
+import '../core/products.dart';
 
 class Repository {
   final Database db; int revision=0; late Obj state;
@@ -34,7 +35,8 @@ class Repository {
     }
     initial['businessId']=const Uuid().v4();r.state=initial;await r.save(initial);return r;
   }
-  Future<void> save(Obj candidate) async {
+  Future<void> save(Obj candidate, {bool restoring=false}) async {
+    validateProductChanges(state, candidate, restoring:restoring);
     validateState(candidate);final before=objects(state['events']),after=objects(candidate['events']);
     if(canonical(after.take(before.length).toList())!=canonical(before) || state['legacy']!=null && canonical(state['legacy'])!=canonical(candidate['legacy']))throw const FormatException('Historical records cannot be overwritten.');
     final text=canonical(candidate);if(utf8.encode(text).length>64*1024*1024)throw const FormatException('Data exceeds portable backup limit. Export and contact support.');
@@ -48,6 +50,26 @@ class Repository {
     revision++;state=clone(candidate);
   }
   Future<void> append(Obj e, [Obj? attachment]) async {final next=clone(state);(next['events'] as List).add(e);if(attachment!=null)(next['attachments'] as List).add({...attachment,'eventId':e['id']});await save(next);}
-  Future<void> restore(Obj incoming) async {final next=mergeBackup(state,incoming);if((next['businessId'] as String).isEmpty)next['businessId']=state['businessId'];await save(next);}
+  final Map<String, Future<bool>> _salesInFlight = {};
+  Future<bool> recordSale(Obj e, [Obj? attachment]) {
+    final id = e['id'] as String;
+    return _salesInFlight.putIfAbsent(id, () async {
+      try {
+        final existing = objects(state['events']).where((old) => old['id'] == id).firstOrNull;
+        if (existing != null) {
+          if (canonical(existing) != canonical(e)) throw const FormatException('This sale ID already has different details.');
+          return false;
+        }
+        if (e['type'] != 'sale') throw const FormatException('Expected a sale.');
+        final next = clone(state);
+        (next['events'] as List).add(e);
+        next['lastPayment'] = e['payment'];
+        if (attachment != null) (next['attachments'] as List).add({...attachment,'eventId':id});
+        await save(next);
+        return true;
+      } finally { _salesInFlight.remove(id); }
+    });
+  }
+  Future<void> restore(Obj incoming) async {final next=mergeBackup(state,incoming);if((next['businessId'] as String).isEmpty)next['businessId']=state['businessId'];await save(next,restoring:true);}
   Future<void> close()=>db.close();
 }

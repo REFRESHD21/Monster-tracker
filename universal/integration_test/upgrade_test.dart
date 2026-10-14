@@ -8,7 +8,7 @@ import 'package:integration_test/integration_test.dart';
 import 'package:business_tracker/main.dart';
 import 'package:business_tracker/core/codec.dart';
 import 'package:business_tracker/core/engine.dart';
-import 'package:business_tracker/core/legacy.dart';
+import 'package:business_tracker/core/products.dart';
 import 'package:business_tracker/services/repository.dart';
 import 'package:business_tracker/services/backups.dart';
 void main(){
@@ -27,12 +27,46 @@ void main(){
     await repo.append(event(id:'device-refund-001',type:'refund',target:'device-sale-00001',revenue:555));
     await repo.append(event(id:'device-return-001',type:'return',target:'device-sale-00001',quantity:1));
     expect(validateState(repo.state).book.stock('device-product-001'),6);
+    // Exercise the compact sale UI against the upgraded SQLite repository.
+    final configured=clone(repo.state);
+    objects(configured['products']).firstWhere((p)=>p['id']=='device-product-001')['twoItemPrice']=900;
+    (configured['products'] as List).add({'id':'unused-product-001','name':'Unused flavour','category':'Drinks','variant':'','purchaseCost':0,'sellingPrice':300,'minimum':0,'barcode':'','photo':null});
+    await repo.save(configured);
+    await tester.pumpWidget(TrackerApp(key:const ValueKey('fast-sales'),repository:repo));await tester.pumpAndSettle();
+    final historyBefore=objects(repo.state['events']).length;
+    await tester.tap(find.byKey(const ValueKey('record-sale')));await tester.pumpAndSettle();
+    await tester.tap(find.text('Skincare cream · 50 ml'));await tester.pumpAndSettle();
+    await tester.tap(find.text('2-item deal · \$9.00'));await tester.pumpAndSettle();
+    await tester.tap(find.text('Card / bank'));await tester.pumpAndSettle();
+    await binding.takeScreenshot('${legacy?'upgrade':'empty'}-fast-deal');
+    await tester.tap(find.byKey(const ValueKey('confirm-sale')));await tester.tap(find.byKey(const ValueKey('confirm-sale')));
+    await tester.pumpAndSettle();
+    expect(objects(repo.state['events']).length,historyBefore+1);expect(objects(repo.state['events']).last['revenue'],900);expect(repo.state['lastPayment'],'card');
+    final retry=event(id:'duplicate-sale-001',type:'sale',quantity:1,productId:'device-product-001',revenue:555,payment:'card');
+    await Future.wait([repo.recordSale(retry),repo.recordSale(retry)]);expect(await repo.recordSale(retry),false);
+    expect(objects(repo.state['events']).where((e)=>e['id']=='duplicate-sale-001').length,1);
+    expect(validateState(repo.state).book.stock('device-product-001'),3);
+    await tester.tap(find.byKey(const ValueKey('record-sale')));await tester.pumpAndSettle();await tester.tap(find.text('Skincare cream · 50 ml'));await tester.pumpAndSettle();
+    expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip,'Card / bank')).selected,true);
+    await tester.tap(find.text('Cancel'));await tester.pumpAndSettle();
+    // Removal with stock is blocked and explained; no event history is deleted.
+    expect(productRemoval(repo.state,'device-product-001').canArchive,false);
+    await repo.append(event(id:'remaining-loss-001',type:'damaged',quantity:3,productId:'device-product-001',note:'Device removal fixture'));
+    final ready=clone(repo.state);ready['products']=objects(ready['products']).map((p)=>p['id']=='device-product-001'?{...p,'archived':true}:p).toList();
+    final beforeArchive=validateState(repo.state).summary();await repo.save(ready);expect(validateState(repo.state).summary(),beforeArchive);
+    final unusedRemoved=clone(repo.state);(unusedRemoved['products'] as List).removeWhere((p)=>p['id']=='unused-product-001');await repo.save(unusedRemoved);
+    await tester.pumpWidget(TrackerApp(key:const ValueKey('archived-view'),repository:repo));await tester.pumpAndSettle();
+    await tester.tap(find.text('Products'));await tester.pumpAndSettle();expect(find.text('Skincare cream · 50 ml'),findsNothing);
+    await tester.tap(find.text('Archived products'));await tester.pumpAndSettle();expect(find.text('Skincare cream · 50 ml'),findsOneWidget);
+    await binding.takeScreenshot('${legacy?'upgrade':'empty'}-archived-products');
+    await tester.tap(find.text('Restore'));await tester.pumpAndSettle();expect(isArchived(objects(repo.state['products']).firstWhere((p)=>p['id']=='device-product-001')),false);
+    final archivedAgain=clone(repo.state);objects(archivedAgain['products']).firstWhere((p)=>p['id']=='device-product-001')['archived']=true;await repo.save(archivedAgain);
     final large=clone(repo.state);large['businessName']='My skincare business';final photoBytes=List<int>.filled(1600000,42);photoBytes.setAll(0,utf8.encode('%PDF-1.4'));(large['attachments'] as List).add({'id':'large-receipt-0001','eventId':'device-restock-001','mime':'application/pdf','data':base64Encode(photoBytes),'sha256':bytesHash(photoBytes)});await repo.save(large);
     const password='portable-test-password';final encrypted=await Backups.encrypt(repo.state,password),restored=await Backups.decode(encrypted,password);expect(restored,repo.state);
     expect(()=>Backups.decode(encrypted,'wrong-password'),throwsFormatException);
     await Backups.recovery(repo.state,password);final recovery=(await Backups.recoveryFiles()).firstWhere((f)=>f.path.endsWith('.businessbk'));expect(await Backups.decode(await recovery.readAsBytes(),password),repo.state);expect(File('${recovery.path}.partial').existsSync(),false);
     final before=canonical(repo.state);await repo.restore(restored);expect(canonical(repo.state),before);
     await tester.pumpWidget(const SizedBox());await tester.pumpAndSettle();await repo.close();
-    final reopened=await Repository.open();expect(canonical(reopened.state),before);expect(validateState(reopened.state).book.stock('device-product-001'),6);await reopened.close();
+    final reopened=await Repository.open();expect(canonical(reopened.state),before);expect(validateState(reopened.state).book.stock('device-product-001'),0);expect(reopened.state['lastPayment'],'card');final savedProduct=objects(reopened.state['products']).firstWhere((p)=>p['id']=='device-product-001');expect(savedProduct['twoItemPrice'],900);expect(isArchived(savedProduct),true);await reopened.close();
   });
 }

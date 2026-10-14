@@ -144,11 +144,14 @@ Obj event({required String id, required String type, int quantity = 0, String? p
 Accounts validateState(Obj s) {
   if(s['format'] != 'business-tracker' || s['version'] != 1 || s['currency'] != 'AUD' || s['timeZone'] != 'Australia/Perth' || !themes.contains(s['theme'])) throw const FormatException('Unsupported tracker backup.');
   if(string(s['businessName'],120).trim().isEmpty) throw const FormatException('Enter a business name.');
+  if(s['lastPayment'] != null && !['cash','card'].contains(s['lastPayment'])) throw const FormatException('Invalid saved payment method.');
   if((s['events'] as List).length>100000 || (s['products'] as List).length>10000 || (s['attachments'] as List).length>100000)throw const FormatException('History limit reached. Export a full backup before adding more records.');
   final products = <String>{}, barcodes = <String>{};
   for(final p in objects(s['products'])) {
     if(!products.add(string(p['id'],100)) || string(p['name'],120).trim().isEmpty) throw const FormatException('Invalid product identity.');
     for(final k in ['purchaseCost','sellingPrice','minimum']) {integer(p[k]);}
+    if(p['twoItemPrice'] != null) integer(p['twoItemPrice'],1);
+    if(p['archived'] != null && p['archived'] is! bool) throw const FormatException('Invalid product archive setting.');
     string(p['category'],80);string(p['variant'],120);
     final barcode=string(p['barcode'],80);if(barcode.isNotEmpty && !barcodes.add(barcode)) throw const FormatException('Barcode already belongs to another product.');
     if(p['photo'] != null){verifyAttachment(obj(p['photo']));if(p['photo']['mime']=='application/pdf')throw const FormatException('Product photos must be JPG or PNG images.');}
