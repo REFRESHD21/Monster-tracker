@@ -1,9 +1,17 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:business_tracker/core/codec.dart';
 import 'package:business_tracker/core/engine.dart';
 import 'package:business_tracker/core/legacy.dart';
 void main() {
+  test('large SQLite chunks preserve Unicode across platform UTF-8 messages',(){
+    final text='${'x'*131071}😀 café after';
+    expect(stateChunks(text).map((part)=>utf8.decode(utf8.encode(part))).join(),text);
+  });
+  test('CSV keeps refund amounts numeric and neutralizes user formulas',(){
+    expect(csvCell(-300),'"-300"');expect(csvCell('=IMPORTXML("bad")'),'"\'=IMPORTXML(""bad"")"');
+  });
   test('Perth ranges use exclusive ends, Monday weeks and July financial year',(){
     final day=reportRange('day',DateTime.parse('2026-10-14T18:00:00Z'));
     expect(day.$1,DateTime.parse('2026-10-14T16:00:00Z').millisecondsSinceEpoch);

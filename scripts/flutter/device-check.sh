@@ -10,7 +10,25 @@ python3 ../scripts/flutter/seed-upgrade.py device-evidence/before/databases/mons
 adb push device-evidence/before/databases/monster-offline.db /data/local/tmp/legacy-upgrade.db
 adb shell run-as au.monster.tracker.plus rm -f databases/monster-offline.db-wal databases/monster-offline.db-shm
 adb shell run-as au.monster.tracker.plus cp /data/local/tmp/legacy-upgrade.db databases/monster-offline.db
+# Convert the seeded installation to the actual non-debuggable 1.6.3 baseline.
+# This preserves the same records and enables an exact release-to-release update.
+baseline_release=$(find ../baseline-release -name '*.apk' -print -quit)
+adb install -r "$baseline_release"
+adb shell am start -W -n au.monster.tracker.plus/au.monster.tracker.MainActivity
+sleep 3
+adb shell am force-stop au.monster.tracker.plus
 adb shell cmd connectivity airplane-mode enable
+adb shell svc wifi disable
+adb shell svc data disable
+adb shell settings get global airplane_mode_on | tr -d '\r' | grep -qx 1
+adb install -r build/app/outputs/flutter-apk/app-release.apk
+adb logcat -c
+adb shell am start -W -n au.monster.tracker.plus/au.monster.tracker.MainActivity
+sleep 5
+adb exec-out screencap -p > device-evidence/direct-release-upgrade.png
+adb logcat -d > device-evidence/direct-release-logcat.txt
+! grep -E 'FATAL EXCEPTION|Unhandled Exception' device-evidence/direct-release-logcat.txt
+# Same-certificate instrumented build reads the migration already made by release.
 flutter drive --driver=test_driver/integration_test.dart --target=integration_test/upgrade_test.dart --dart-define=EXPECT_LEGACY=true
 # Prove the uninstrumented release APK also updates in place and launches.
 adb install -r build/app/outputs/flutter-apk/app-release.apk

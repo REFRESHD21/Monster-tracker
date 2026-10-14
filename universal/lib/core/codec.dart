@@ -78,3 +78,19 @@ class _Parser {
     final m = RegExp(r'^-?(?:0|[1-9][0-9]*)').firstMatch(s.substring(i)); if (m == null) bad(); i += m![0]!.length; return int.parse(m[0]!);
   }
 }
+
+String csvCell(dynamic value) {
+  var text=value?.toString() ?? '';
+  if(value is String && RegExp(r'^\s*[=+@-]').hasMatch(text))text="'$text";
+  return '"${text.replaceAll('"','""')}"';
+}
+
+/// Bound each SQLite row without splitting a UTF-16 surrogate pair in platform messages.
+Iterable<String> stateChunks(String text) sync* {
+  var start=0;
+  while(start<text.length) {
+    var end=start+131072<text.length?start+131072:text.length;
+    if(end<text.length && text.codeUnitAt(end-1)>=0xd800 && text.codeUnitAt(end-1)<=0xdbff && text.codeUnitAt(end)>=0xdc00 && text.codeUnitAt(end)<=0xdfff)end--;
+    yield text.substring(start,end);start=end;
+  }
+}

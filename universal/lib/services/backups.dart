@@ -6,6 +6,7 @@ import 'package:backup_destination/backup_destination.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:uuid/uuid.dart';
 import '../core/codec.dart';
 import '../core/legacy.dart';
 
@@ -43,7 +44,7 @@ class Backups {
   }
   static Future<void> recovery(Obj state,String p) async {
     final folder=Directory('${(await getApplicationSupportDirectory()).path}/recovery');await folder.create(recursive:true);
-    final bytes=await encrypt(state,p), file=File('${folder.path}/${DateTime.now().millisecondsSinceEpoch}.businessbk');
+    final bytes=await encrypt(state,p), file=File('${folder.path}/${DateTime.now().millisecondsSinceEpoch}-${const Uuid().v4()}.businessbk');
     await file.writeAsBytes(bytes,flush:true);await decode(await file.readAsBytes(),p);
     const secure=FlutterSecureStorage(iOptions:IOSOptions(accessibility:KeychainAccessibility.first_unlock));
     final destination=await secure.read(key:'backup-folder');

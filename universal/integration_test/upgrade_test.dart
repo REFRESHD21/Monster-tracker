@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart' as path;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:business_tracker/main.dart';
@@ -14,8 +16,8 @@ void main(){
   testWidgets('upgrade retains records and new universal saves survive restart', (tester) async {
     final repo=await Repository.open();
     final legacy=switch(const String.fromEnvironment('EXPECT_LEGACY',defaultValue:'true')){'true'=>true,_=>false};
-    if(legacy){expect(repo.state['legacy'],isNotNull);expect(objects(repo.state['events']).length,4);expect(validateState(repo.state).book.stock(legacyProduct),25);expect(objects(repo.state['events'])[0]['date'],null);expect(objects(repo.state['events'])[2]['id'],'upgrade-restock-001');expect(objects(repo.state['events'])[3]['revenue'],777);}
-    else {expect(repo.state['events'],isEmpty);expect(repo.state['products'],isEmpty);}
+    if(legacy){expect(repo.state['legacy'],isNotNull);expect(objects(repo.state['events']).length,4);expect(validateState(repo.state).book.stock(legacyProduct),25);expect(objects(repo.state['events'])[0]['date'],null);expect(objects(repo.state['events'])[2]['id'],'upgrade-restock-001');expect(objects(repo.state['events'])[3]['revenue'],777);final original=await openReadOnlyDatabase(path.join(await getDatabasesPath(),'monster-offline.db'));expect(Sqflite.firstIntValue(await original.rawQuery('PRAGMA user_version')),6);expect(Sqflite.firstIntValue(await original.rawQuery('SELECT COUNT(*) FROM events')),4);expect((await original.query('events',where:'id=?',whereArgs:['upgrade-sale-00001'])).single['revenue'],777);await original.close();}
+    else {expect(repo.state['events'],isEmpty);expect(repo.state['products'],isEmpty);expect(File(path.join(await getDatabasesPath(),'monster-offline.db')).existsSync(),false);}
     await tester.pumpWidget(TrackerApp(repository:repo));await tester.pumpAndSettle();expect(find.text('Your business at a glance'),findsOneWidget);
     await binding.convertFlutterSurfaceToImage();await tester.pumpAndSettle();
     for(final theme in themes){final s=clone(repo.state);s['theme']=theme;await repo.save(s);await tester.pumpWidget(TrackerApp(key:ValueKey(theme),repository:repo));await tester.pumpAndSettle();expect(tester.takeException(),isNull);await binding.takeScreenshot('${legacy?'upgrade':'empty'}-${theme.replaceAll(' ','-')}');}
