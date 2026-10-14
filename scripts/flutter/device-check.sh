@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 mkdir -p device-evidence/before/databases
+trap 'status=$?; if [ "$status" -ne 0 ]; then adb logcat -d > device-evidence/failure-logcat.txt || true; adb exec-out screencap -p > device-evidence/failure-screen.png || true; fi' EXIT
 wait_for_ui() {
   local expected="$1" name="$2"
   for attempt in $(seq 1 10); do
@@ -56,7 +57,7 @@ adb logcat -d > device-evidence/direct-release-logcat.txt
 ! grep -E 'FATAL EXCEPTION|Unhandled Exception' device-evidence/direct-release-logcat.txt
 # Same-certificate instrumented build reads the migration already made by release.
 # Flutter drive otherwise uninstalls the app during cleanup; keep it for persistence proof.
-timeout 8m flutter drive --keep-app-running --driver=test_driver/integration_test.dart --target=integration_test/upgrade_test.dart --dart-define=EXPECT_LEGACY=true
+timeout 8m flutter drive --no-dds --keep-app-running --driver=test_driver/integration_test.dart --target=integration_test/upgrade_test.dart --dart-define=EXPECT_LEGACY=true
 # Prove the uninstrumented release APK also updates in place and launches.
 adb install -r build/app/outputs/flutter-apk/app-release.apk
 adb logcat -c
@@ -68,4 +69,4 @@ adb logcat -d > device-evidence/release-logcat.txt
 # Fresh-install path has no old database and must remain empty.
 # This clear is on the disposable CI emulator only, after the upgrade proof.
 adb shell pm clear au.monster.tracker.plus
-timeout 8m flutter drive --keep-app-running --driver=test_driver/integration_test.dart --target=integration_test/upgrade_test.dart --dart-define=EXPECT_LEGACY=false
+timeout 8m flutter drive --no-dds --keep-app-running --driver=test_driver/integration_test.dart --target=integration_test/upgrade_test.dart --dart-define=EXPECT_LEGACY=false
