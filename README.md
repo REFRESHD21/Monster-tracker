@@ -1,9 +1,10 @@
-# Monster Tracker 1.1
+# Monster Tracker 1.6.3
 
 Installs as **Monster Tracker Plus** alongside the original app. Export a JSON backup from the original, then import it into Plus to transfer your records safely.
 
 A native Android stock and sales ledger with local receipt photos and optional Stripe Tap to Pay.
 
+- Optional manual/automatic Google Sheets sales-and-stock uploads; see [SHEETS_SETUP.md](SHEETS_SETUP.md). Supplier documents, refunds and financial reports remain in their existing offline tools and backups.
 - Cash and manual card entries, stock purchases/adjustments, history and JSON backups work offline.
 - Take live receipt photos or import them through History > transaction > Receipt photos. Images are copied into the app and included in full JSON backups; CSV contains transaction data only.
 - Stripe Terminal 6.0.0 provides native Tap to Pay. A merchant-owned Stripe account and authenticated HTTPS payment backend are required. The included `backend/` uses durable SQLite and idempotent PaymentIntents. Test payments do not modify stock or revenue.
@@ -17,7 +18,7 @@ See [STRIPE_SETUP.md](STRIPE_SETUP.md) for installation, receipt backups, accoun
 
 ## Build
 
-GitHub Actions runs host accounting/backup checks, payment-backend tests, Android unit tests, database/receipt/migration tests in an offline emulator, and APK package/signature/manifest verification. It exports a non-debuggable `Monster-Tracker-1.6.1.apk`.
+GitHub Actions runs host accounting/backup checks, payment-backend tests, Android unit tests, database/receipt/migration tests in an offline emulator, and APK package/signature/manifest verification. It exports a non-debuggable `Monster-Tracker-1.6.3.apk`.
 
 Locally with JDK 17, Android SDK and Gradle 8.9:
 
@@ -62,6 +63,6 @@ After a successful Stripe test/simulated payment, the payment screen offers **Te
 
 A pending payment reserves only its flavour/quantity. Available-stock displays and shopping alerts exclude that reservation; other cash/manual entries can continue offline. Resolve that flavour's payment before a physical count, and resolve all pending payments before phone transfer. Manual refund dates can explicitly stay unknown; incorrect manual refund records have append-only corrections. A physical return is independent of refund status and always needs your explicit confirmation.
 
-## Verified download
+## Previous verified download
 
 The current 1.6.1 application passed all 111 host checks, 19 fake-provider backend tests, Android unit tests and 45 airplane-mode Android checks in [run 38409682236](https://github.com/REFRESHD21/Monster-tracker/actions/runs/38409682236). Download **monster-tracker-apk** for phone installation. A separate debug APK is available. [GITHUB_BUILD.md](GITHUB_BUILD.md) has current installation, backup/recovery, signing and phone-friendly rebuild instructions. Actual physical-camera/Stripe/cloud-provider verification remains external; no real Stripe API write/readback is claimed.
