@@ -13,7 +13,7 @@ void main(){
     final fixture=obj(strictJson(File('test/fixtures/full-domain.json').readAsStringSync()));
     final s=importLegacy(canonical(fixture['backup'])), totals=validateState(s).summary();
     for(final k in obj(fixture['expected']).keys){expect(totals[k],fixture['expected'][k],reason:k);}
-    expect(s['attachments'][0]['data'],fixture['backup']['receipts'][0]['base64']);
+    expect(base64Encode(attachmentBytes(obj(s['attachments'][0]),s)),fixture['backup']['receipts'][0]['base64']);
     expect(s['legacy']['business']['receipts'],fixture['backup']['business']['receipts']);
   });
   test('Dart decrypts an actual Java-generated PBKDF2/AES-GCM backup',() async {

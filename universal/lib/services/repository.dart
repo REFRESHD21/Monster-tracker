@@ -32,7 +32,9 @@ class Repository {
     initial['businessId']=const Uuid().v4();r.state=initial;await r.save(initial);return r;
   }
   Future<void> save(Obj candidate) async {
-    validateState(candidate);final text=canonical(candidate);if(text.length>64*1024*1024)throw const FormatException('Data exceeds portable backup limit. Export and contact support.');
+    validateState(candidate);final before=objects(state['events']),after=objects(candidate['events']);
+    if(canonical(after.take(before.length).toList())!=canonical(before) || state['legacy']!=null && canonical(state['legacy'])!=canonical(candidate['legacy']))throw const FormatException('Historical records cannot be overwritten.');
+    final text=canonical(candidate);if(text.length>64*1024*1024)throw const FormatException('Data exceeds portable backup limit. Export and contact support.');
     await db.transaction((txn) async {
       final rows=await txn.query('tracker');
       if(rows.isEmpty){await txn.insert('tracker',{'id':1,'revision':1});}

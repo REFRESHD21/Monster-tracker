@@ -66,7 +66,7 @@ Obj importLegacy(String text) {
     events.add({...event(id:o['id'],type:'refund_observation',target:r['saleId'],note:r['note']),'date':o['created'],'recordedAt':o['verifiedAt'],'delta':delta,'feeDelta':fee});
   }
   final attachments=<Obj>[];
-  for(final a in objects(root['receipts'] ?? [])) {attachments.add({'id':a['id'],'eventId':a['eventId'],'mime':a['mime'],'data':a['base64'],'sha256':a['sha256']});}
+  for(final a in objects(root['receipts'] ?? [])) {attachments.add({'id':a['id'],'eventId':a['eventId'],'mime':a['mime'],'legacyIndex':attachments.length,'sha256':a['sha256']});}
   // Original supplier PDFs/photos and their exact associations stay inside legacy.
   for(final a in objects(business['receipts'] ?? [])) {final bytes=base64Decode(a['content']);if(bytesHash(bytes)!=a['hash'] || bytes.isEmpty || bytes.length>16*1024*1024) throw const FormatException('Damaged supplier receipt.');}
   state['events']=events;state['attachments']=attachments;state['legacyCount']=events.length;

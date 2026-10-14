@@ -153,16 +153,21 @@ Accounts validateState(Obj s) {
     if(p['photo'] != null) verifyAttachment(obj(p['photo']));
   }
   for(final e in objects(s['events'])) { for(final a in objects(e['allocations'])) {if(!products.contains(a['productId'])) throw const FormatException('Unknown product in history.');} if(e['type']=='transfer' && (!products.contains(e['from']) || !products.contains(e['to']))) throw const FormatException('Unknown transfer product.'); }
-  final ids=<String>{};for(final a in objects(s['attachments'])) {verifyAttachment(a);if(!ids.add(a['id'] as String)) throw const FormatException('Duplicate receipt.');}
+  final ids=<String>{};for(final a in objects(s['attachments'])) {verifyAttachment(a,s);if(!ids.add(a['id'] as String)) throw const FormatException('Duplicate receipt.');}
   final result=calculate(objects(s['events']));for(final a in objects(s['attachments'])) {if(!result.history.containsKey(a['eventId'])) throw const FormatException('Receipt has no transaction.');}
   return result;
 }
-void verifyAttachment(Obj a) {
-  final bytes = attachmentBytes(a);
+void verifyAttachment(Obj a,[Obj? state]) {
+  final bytes = attachmentBytes(a,state);
   if(bytes.isEmpty || bytes.length > 16*1024*1024 || bytesHash(bytes) != a['sha256'] || attachmentMime(bytes)!=a['mime'] || !['image/jpeg','image/png','application/pdf'].contains(a['mime'])) throw const FormatException('Invalid or damaged attachment.');
 }
 
-List<int> attachmentBytes(Obj a) => base64Decode(a['data'] as String);
+List<int> attachmentBytes(Obj a,[Obj? state]) {
+  if(a['data'] is String)return base64Decode(a['data'] as String);
+  final index=integer(a['legacyIndex'],0,99),photos=objects(state?['legacy']?['receipts'] ?? []);
+  if(index>=photos.length || photos[index]['id']!=a['id'] || photos[index]['eventId']!=a['eventId'])throw const FormatException('Invalid legacy receipt association.');
+  return base64Decode(photos[index]['base64'] as String);
+}
 
 String attachmentMime(List<int> bytes) {
   if(bytes.length>=3 && bytes[0]==255 && bytes[1]==216 && bytes[2]==255)return 'image/jpeg';
