@@ -1,0 +1,150 @@
+name: Universal tracker
+on:
+  pull_request:
+    branches: ['feature/sheets-compatible-update']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: universal-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  MONSTER_DEBUG_KEYSTORE: ${{ github.workspace }}/.signing/monster-plus-debug.keystore
+jobs:
+  shared:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.7'
+          channel: stable
+          cache: true
+      - name: Legacy regression and regenerate Java oracle
+        run: |
+          bash scripts/test-core.sh
+          java -m jdk.compiler/com.sun.tools.javac.Main -cp .build/core -d .build/core scripts/flutter/ParityFixtures.java
+          java -cp .build/core au.monster.tracker.ParityFixtures
+      - working-directory: universal
+        run: flutter pub get
+      - working-directory: universal
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - working-directory: universal
+        run: flutter test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shared-test-source
+          path: |
+            universal/pubspec.lock
+            universal/test/fixtures/
+  android:
+    needs: shared
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.7'
+          channel: stable
+          cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: monster-tracker-apk
+          run-id: 38515243114
+          github-token: ${{ github.token }}
+          path: baseline-release
+      - uses: actions/download-artifact@v4
+        with:
+          name: monster-tracker-debug-apk
+          run-id: 38515243114
+          github-token: ${{ github.token }}
+          path: baseline-debug
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.MONSTER_DEBUG_KEYSTORE }}
+          key: monster-plus-debug-signing-key-v1
+          fail-on-cache-miss: true
+      - name: Require exact legacy signing certificate BEFORE compiling update
+        run: |
+          set -euo pipefail
+          sdkmanager 'build-tools;35.0.0'
+          tools="$ANDROID_HOME/build-tools/35.0.0"
+          baseline=$(find baseline-release -name '*.apk' -print -quit)
+          "$tools/apksigner" verify --print-certs "$baseline" | tee baseline-cert.txt
+          keytool -exportcert -keystore "$MONSTER_DEBUG_KEYSTORE" -storepass android -alias androiddebugkey -file /tmp/compatible.der
+          expected=$(sha256sum /tmp/compatible.der | cut -d' ' -f1)
+          grep -F "Signer #1 certificate SHA-256 digest: $expected" baseline-cert.txt
+          "$tools/apksigner" verify --print-certs baseline-debug/app-debug.apk | grep -F "Signer #1 certificate SHA-256 digest: $expected"
+      - run: python3 scripts/flutter/bootstrap.py
+      - working-directory: universal
+        run: flutter build apk --release && flutter build apk --debug
+      - name: Enable emulator acceleration
+        run: sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          working-directory: universal
+          script: bash ../scripts/flutter/device-check.sh
+      - name: Verify release update certificate, package and contents
+        run: |
+          set -euo pipefail
+          tools="$ANDROID_HOME/build-tools/35.0.0"
+          apk=universal/build/app/outputs/flutter-apk/app-release.apk
+          "$tools/apksigner" verify --verbose --print-certs "$apk" | tee signing-verification.txt
+          keytool -exportcert -keystore "$MONSTER_DEBUG_KEYSTORE" -storepass android -alias androiddebugkey -file /tmp/compatible.der
+          expected=$(sha256sum /tmp/compatible.der | cut -d' ' -f1)
+          grep -F "Signer #1 certificate SHA-256 digest: $expected" signing-verification.txt
+          "$tools/aapt" dump badging "$apk" | tee apk-verification.txt
+          grep -F "package: name='au.monster.tracker.plus' versionCode='11'" apk-verification.txt
+          ! grep -q application-debuggable apk-verification.txt
+          unzip -tq "$apk"
+          mkdir -p dist
+          cp "$apk" dist/Business-Tracker-2.0.0.apk
+          cp signing-verification.txt apk-verification.txt dist/
+          cd dist && sha256sum Business-Tracker-2.0.0.apk > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-android-update
+          path: dist/
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: flutter-android-evidence
+          path: |
+            universal/device-evidence/
+            baseline-cert.txt
+            universal/pubspec.lock
+  ios:
+    needs: shared
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.7'
+          channel: stable
+          cache: true
+      - run: python3 scripts/flutter/bootstrap.py
+      - working-directory: universal
+        run: flutter build ios --release --no-codesign
