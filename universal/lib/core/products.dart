@@ -41,7 +41,7 @@ ProductRemoval productRemoval(Obj state, String id) {
   final history = events.any((e) => referencesProduct(e, id));
   final others = {...state}..remove('products')..remove('events');
   var pending = events.where((e) => referencesProduct(e, id) && (e['reservedRefund'] as int? ?? 0) > 0).length;
-  final business=obj(state['legacy']?['business'] ?? {}),delivered=<String,int>{};
+  final business=obj(state['legacy']?['business'] ?? <String,dynamic>{}),delivered=<String,int>{};
   for(final d in objects(business['deliveries'] ?? [])){delivered[d['lineId']]=(delivered[d['lineId']] ?? 0)+(d['quantity'] as int);}
   final cancelled=objects(business['cancellations'] ?? []).map((c)=>c['documentId']).toSet();
   for(final doc in objects(business['documents'] ?? [])){

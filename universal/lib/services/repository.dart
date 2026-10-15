@@ -55,24 +55,30 @@ class Repository {
   }
   Future<void> append(Obj e, [Obj? attachment]) async {final next=clone(state);(next['events'] as List).add(e);if(attachment!=null)(next['attachments'] as List).add({...attachment,'eventId':e['id']});await save(next);}
   final Map<String, Future<bool>> _salesInFlight = {};
+  final Map<String, Obj> _saleRequests = {};
   Future<bool> recordSale(Obj e, [Obj? attachment]) {
-    final id = e['id'] as String;
-    return _salesInFlight.putIfAbsent(id, () async {
-      try {
-        final existing = objects(state['events']).where((old) => old['id'] == id).firstOrNull;
-        if (existing != null) {
-          if (canonical(existing) != canonical(e)) throw const FormatException('This sale ID already has different details.');
-          return false;
-        }
-        if (e['type'] != 'sale') throw const FormatException('Expected a sale.');
-        final next = clone(state);
-        (next['events'] as List).add(e);
-        next['lastPayment'] = e['payment'];
-        if (attachment != null) (next['attachments'] as List).add({...attachment,'eventId':id});
-        await save(next);
-        return true;
-      } finally { _salesInFlight.remove(id); }
-    });
+    final id=e['id'] as String,flight=_salesInFlight[e['id']];
+    if(flight!=null){
+      if(canonical(_saleRequests[id])!=canonical(e))return Future<bool>.error(const FormatException('This sale ID already has different details.'));
+      return flight;
+    }
+    final future=_recordSale(e,attachment);
+    _salesInFlight[id]=future;_saleRequests[id]=clone(e);
+    void clear(){_salesInFlight.remove(id);_saleRequests.remove(id);}
+    future.then<void>((_)=>clear(),onError:(Object error,StackTrace stack){clear();});
+    return future;
+  }
+  Future<bool> _recordSale(Obj e,Obj? attachment) async {
+    final id=e['id'] as String;
+    final existing=objects(state['events']).where((old)=>old['id']==id).firstOrNull;
+    if(existing!=null){
+      if(canonical(existing)!=canonical(e))throw const FormatException('This sale ID already has different details.');
+      return false;
+    }
+    if(e['type']!='sale')throw const FormatException('Expected a sale.');
+    final next=clone(state);(next['events'] as List).add(e);next['lastPayment']=e['payment'];
+    if(attachment!=null)(next['attachments'] as List).add({...attachment,'eventId':id});
+    await save(next);return true;
   }
   Future<void> restore(Obj incoming) async {final next=mergeBackup(state,incoming);if((next['businessId'] as String).isEmpty)next['businessId']=state['businessId'];await save(next,restoring:true);}
   Future<void> close()=>db.close();
