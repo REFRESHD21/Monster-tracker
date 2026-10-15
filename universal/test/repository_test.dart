@@ -65,7 +65,7 @@ void main(){
     final result=await Future.wait([r.recordPurchase(purchase),r.recordPurchase(purchase)]);
     expect(result.every((saved)=>saved),true);expect(objects(r.state['events']).length,2);expect(validateState(r.state).book.stock('purchase-product-01'),52);
     expect(await r.recordPurchase(purchase),false);expect(validateState(r.state).book.stock('purchase-product-01'),52);
-    final conflicting=clone(purchase);obj(conflicting.first['purchaseLine'])['cost']=4801;conflicting.first['cost']=4801;
+    final conflicting=objects(purchase).map(clone).toList();obj(conflicting.first['purchaseLine'])['cost']=4801;conflicting.first['cost']=4801;
     await expectLater(r.recordPurchase(conflicting),throwsFormatException);expect(validateState(r.state).book.stock('purchase-product-01'),52);
     await r.close();
   });
