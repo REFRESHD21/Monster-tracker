@@ -1,0 +1,157 @@
+name: Prepare private Play AAB
+
+on:
+  workflow_dispatch:
+    inputs:
+      version_code:
+        description: New Android version code (must be greater than 17)
+        required: true
+        type: string
+        default: '18'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: play-aab-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    # Configure this Environment with required reviewers and branch restrictions
+    # before adding its secrets. This workflow never contacts Play Console.
+    environment: play-release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      PLAY_BUILD_NUMBER: ${{ inputs.version_code }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Require protected upload signing configuration
+        shell: bash
+        env:
+          PLAY_UPLOAD_KEYSTORE_B64: ${{ secrets.PLAY_UPLOAD_KEYSTORE_B64 }}
+          PLAY_UPLOAD_STORE_PASSWORD: ${{ secrets.PLAY_UPLOAD_STORE_PASSWORD }}
+          PLAY_UPLOAD_KEY_ALIAS: ${{ secrets.PLAY_UPLOAD_KEY_ALIAS }}
+          PLAY_UPLOAD_KEY_PASSWORD: ${{ secrets.PLAY_UPLOAD_KEY_PASSWORD }}
+          PLAY_UPLOAD_CERT_SHA256: ${{ secrets.PLAY_UPLOAD_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          [[ "$GITHUB_REPOSITORY" == 'REFRESHD21/Monster-tracker' ]]
+          [[ "$GITHUB_REF" == 'refs/heads/feature/flutter-universal-tracker' ]] || { echo 'Build only from the reviewed PR branch; configure matching Environment branch restrictions and required reviewers.' >&2; exit 1; }
+          for name in PLAY_UPLOAD_KEYSTORE_B64 PLAY_UPLOAD_STORE_PASSWORD PLAY_UPLOAD_KEY_ALIAS PLAY_UPLOAD_KEY_PASSWORD PLAY_UPLOAD_CERT_SHA256; do
+            if [[ -z "${!name:-}" ]]; then
+              echo "Missing required protected Environment secret: $name" >&2
+              exit 1
+            fi
+          done
+          [[ "$PLAY_BUILD_NUMBER" =~ ^[0-9]+$ ]]
+          (( PLAY_BUILD_NUMBER > 17 )) || { echo 'Version code must be greater than 17.' >&2; exit 1; }
+          [[ "$PLAY_UPLOAD_CERT_SHA256" =~ ^([A-Fa-f0-9]{2}:?){32}$ ]] || { echo 'Upload certificate SHA-256 must contain 32 hexadecimal bytes.' >&2; exit 1; }
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.7'
+          channel: stable
+          cache: true
+
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Prepare protected upload keystore on ephemeral runner
+        shell: bash
+        env:
+          PLAY_UPLOAD_KEYSTORE_B64: ${{ secrets.PLAY_UPLOAD_KEYSTORE_B64 }}
+          PLAY_UPLOAD_STORE_PASSWORD: ${{ secrets.PLAY_UPLOAD_STORE_PASSWORD }}
+          PLAY_UPLOAD_KEY_ALIAS: ${{ secrets.PLAY_UPLOAD_KEY_ALIAS }}
+          PLAY_UPLOAD_CERT_SHA256: ${{ secrets.PLAY_UPLOAD_CERT_SHA256 }}
+        run: |
+          set -euo pipefail
+          key="$RUNNER_TEMP/monster-play-upload.jks"
+          umask 077
+          printf '%s' "$PLAY_UPLOAD_KEYSTORE_B64" | base64 --decode > "$key"
+          test -s "$key"
+          echo "PLAY_UPLOAD_KEYSTORE_PATH=$key" >> "$GITHUB_ENV"
+          actual=$(keytool -exportcert -keystore "$key" -storepass "$PLAY_UPLOAD_STORE_PASSWORD" -alias "$PLAY_UPLOAD_KEY_ALIAS" | sha256sum | awk '{print toupper($1)}')
+          expected=$(printf '%s' "$PLAY_UPLOAD_CERT_SHA256" | tr -d ':' | tr '[:lower:]' '[:upper:]')
+          [[ "$actual" == "$expected" ]] || { echo 'Upload keystore certificate does not match the configured fingerprint.' >&2; exit 1; }
+          echo "UPLOAD_CERT_SHA256=$actual" >> "$GITHUB_ENV"
+
+      - working-directory: universal
+        run: flutter pub get
+
+      - name: Generate Android project with protected signing configuration
+        env:
+          PLAY_UPLOAD_KEYSTORE_PATH: ${{ runner.temp }}/monster-play-upload.jks
+        run: python3 scripts/flutter/bootstrap.py
+
+      - name: Verify package and build signed Android App Bundle
+        working-directory: universal
+        shell: bash
+        env:
+          PLAY_UPLOAD_STORE_PASSWORD: ${{ secrets.PLAY_UPLOAD_STORE_PASSWORD }}
+          PLAY_UPLOAD_KEY_ALIAS: ${{ secrets.PLAY_UPLOAD_KEY_ALIAS }}
+          PLAY_UPLOAD_KEY_PASSWORD: ${{ secrets.PLAY_UPLOAD_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          grep -F 'applicationId = "au.monster.tracker.plus"' android/app/build.gradle.kts
+          flutter build appbundle --release --build-number "$PLAY_BUILD_NUMBER" --dart-define-from-file=config/google-oauth.json
+          aab=build/app/outputs/bundle/release/app-release.aab
+          test -s "$aab"
+          mkdir -p ../dist
+          cp "$aab" ../dist/Monster-Business-${PLAY_BUILD_NUMBER}.aab
+
+      - name: Validate bundle identity, version, and signature
+        shell: bash
+        run: |
+          set -euo pipefail
+          bundletool="$RUNNER_TEMP/bundletool-all-1.18.3.jar"
+          curl --fail --silent --show-error --location \
+            https://github.com/google/bundletool/releases/download/1.18.3/bundletool-all-1.18.3.jar \
+            --output "$bundletool"
+          aab="dist/Monster-Business-${PLAY_BUILD_NUMBER}.aab"
+          java -jar "$bundletool" validate --bundle="$aab"
+          package=$(java -jar "$bundletool" dump manifest --bundle="$aab" --xpath='/manifest/@package')
+          code=$(java -jar "$bundletool" dump manifest --bundle="$aab" --xpath='/manifest/@android:versionCode')
+          name=$(java -jar "$bundletool" dump manifest --bundle="$aab" --xpath='/manifest/@android:versionName')
+          target=$(java -jar "$bundletool" dump manifest --bundle="$aab" --xpath='/manifest/uses-sdk/@android:targetSdkVersion')
+          minimum=$(java -jar "$bundletool" dump manifest --bundle="$aab" --xpath='/manifest/uses-sdk/@android:minSdkVersion')
+          [[ "$package" == 'au.monster.tracker.plus' ]]
+          [[ "$code" == "$PLAY_BUILD_NUMBER" ]]
+          [[ "$target" =~ ^[0-9]+$ && "$target" -ge 36 ]] || { echo "Target SDK must be at least 36; got $target" >&2; exit 1; }
+          [[ "$minimum" =~ ^[0-9]+$ && "$minimum" -eq 26 ]] || { echo "Unexpected minimum SDK: $minimum" >&2; exit 1; }
+          aab_cert=$(keytool -printcert -jarfile "$aab" | awk '/SHA256:/{gsub(":", "", $2); print toupper($2); exit}')
+          [[ -n "$aab_cert" && "$aab_cert" == "$UPLOAD_CERT_SHA256" ]]
+          jarsigner -verify -verbose -certs "$aab" > dist/jarsigner-verification.txt
+          unzip -tq "$aab"
+          java -jar "$bundletool" dump manifest --bundle="$aab" > dist/base-manifest.xml
+          {
+            echo "Application ID: $package"
+            echo "Version name: $name"
+            echo "Version code: $code"
+            echo "Minimum SDK: $minimum"
+            echo "Target SDK: $target"
+            echo "AAB upload certificate SHA-256: $aab_cert"
+            echo 'Play app-signing certificate: not configured or verified by this build'
+            echo 'Google Play upload: not performed'
+          } | tee dist/aab-verification.txt
+          (cd dist && sha256sum "Monster-Business-${PLAY_BUILD_NUMBER}.aab" > SHA256SUMS.txt)
+
+      - name: Remove upload key from runner
+        if: always()
+        shell: bash
+        run: rm -f "$RUNNER_TEMP/monster-play-upload.jks"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: monster-business-private-aab-${{ inputs.version_code }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 7

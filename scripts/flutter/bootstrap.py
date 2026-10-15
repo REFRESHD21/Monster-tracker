@@ -24,16 +24,34 @@ for p in (root/'app/src/main/assets').glob('*.sql'):shutil.copy2(p,assets/p.name
 shutil.rmtree(u/'android/app/src/main/java/au/monster/tracker/business_tracker',ignore_errors=True)
 gradle=u/'android/app/build.gradle.kts'
 s=gradle.read_text().replace('namespace = "au.monster.tracker.business_tracker"','namespace = "au.monster.tracker"').replace('applicationId = "au.monster.tracker.business_tracker"','applicationId = "au.monster.tracker.plus"').replace('minSdk = flutter.minSdkVersion','minSdk = 26')
-s=s.replace('buildTypes {','''signingConfigs {
+signing='''val playUploadPath = System.getenv("PLAY_UPLOAD_KEYSTORE_PATH")
+val debugKeystorePath = System.getenv("MONSTER_DEBUG_KEYSTORE")
+val activeSigningConfig = if (!playUploadPath.isNullOrBlank()) "playUpload" else "compatible"
+signingConfigs {
+    if (!debugKeystorePath.isNullOrBlank()) {
         create("compatible") {
-            storeFile = file(System.getenv("MONSTER_DEBUG_KEYSTORE") ?: error("Existing signing key required"))
+            storeFile = file(debugKeystorePath)
             storePassword = "android"
             keyAlias = "androiddebugkey"
             keyPassword = "android"
         }
     }
-    buildTypes {''').replace('signingConfig = signingConfigs.getByName("debug")','signingConfig = signingConfigs.getByName("compatible")')
-s=s.replace('buildTypes {\n','buildTypes {\n        getByName("debug") { signingConfig = signingConfigs.getByName("compatible") }\n',1)
+    if (!playUploadPath.isNullOrBlank()) {
+        create("playUpload") {
+            storeFile = file(playUploadPath)
+            storePassword = System.getenv("PLAY_UPLOAD_STORE_PASSWORD") ?: error("Play upload store password required")
+            keyAlias = System.getenv("PLAY_UPLOAD_KEY_ALIAS") ?: error("Play upload key alias required")
+            keyPassword = System.getenv("PLAY_UPLOAD_KEY_PASSWORD") ?: error("Play upload key password required")
+        }
+    }
+}
+if (activeSigningConfig == "compatible" && debugKeystorePath.isNullOrBlank()) {
+    error("Provide the existing compatible signing key or the protected Play upload key")
+}
+'''
+s=s.replace('buildTypes {',signing+'buildTypes {',1)
+s=s.replace('signingConfig = signingConfigs.getByName("debug")','signingConfig = signingConfigs.getByName(activeSigningConfig)')
+s=s.replace('buildTypes {\n','buildTypes {\n        getByName("debug") { signingConfig = signingConfigs.getByName(activeSigningConfig) }\n',1)
 s=s.replace('sourceCompatibility = JavaVersion.VERSION_11','sourceCompatibility = JavaVersion.VERSION_17').replace('targetCompatibility = JavaVersion.VERSION_11','targetCompatibility = JavaVersion.VERSION_17').replace('jvmTarget = JavaVersion.VERSION_11.toString()','jvmTarget = JavaVersion.VERSION_17.toString()')
 import re
 s=re.sub(r'(release|getByName\("release"\))\s*\{',r'\1 {\n            isMinifyEnabled = false\n            isShrinkResources = false',s)
