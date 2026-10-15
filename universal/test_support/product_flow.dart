@@ -11,7 +11,9 @@ Future<void> exerciseProductFlow(WidgetTester tester, Repository repo,
     {required Future<void> Function(String) screenshot}) async {
   Future<void> tapVisible(Finder target) async {
     if(target.evaluate().isEmpty){
-      await tester.scrollUntilVisible(target,150,scrollable:find.byType(Scrollable).last);
+      // Scroll the page's primary list. The last Scrollable can be an internal
+      // navigation widget and may disappear while the test changes tabs.
+      await tester.scrollUntilVisible(target,150,scrollable:find.byType(Scrollable).first);
     }
     await Scrollable.ensureVisible(tester.element(target), alignment: .5);
     await tester.pumpAndSettle();
