@@ -26,6 +26,7 @@ void main() {
   test('only unused unreferenced products may be permanently deleted',(){
     final s=state();expect(productRemoval(s,'flavour-test-001').canDelete,true);
     final deleted=clone(s);(deleted['products'] as List).removeAt(0);validateProductChanges(s,deleted);
+    final orphaned=clone(deleted);orphaned['otherReference']={'productId':'flavour-test-001'};expect(()=>validateProductChanges(s,orphaned),throwsFormatException);
     s['otherReference']={'productId':'flavour-test-001'};
     expect(productRemoval(s,'flavour-test-001').canDelete,false);expect(productRemoval(s,'flavour-test-001').canArchive,true);
     expect(()=>validateProductChanges(s,deleted),throwsFormatException);
@@ -59,5 +60,14 @@ void main() {
     expect(productRemoval(s,'flavour-test-002').canArchive,false);
     s.remove('pendingTransactions');s['events']=[event(id:'restock-test-001',type:'restock',quantity:2,productId:'flavour-test-001',cost:200),{...event(id:'transfer-test-001',type:'transfer',quantity:2),'from':'flavour-test-001','to':'flavour-test-002'}];
     expect(productRemoval(s,'flavour-test-001').stock,0);expect(productRemoval(s,'flavour-test-001').canDelete,false);
+  });
+  test('reimporting a 2.0.0 backup cannot silently reset settings it never contained',(){
+    final old=state();for(final p in objects(old['products'])){p.remove('twoItemPrice');p.remove('archived');}
+    final current=clone(old);current['products'][0]['twoItemPrice']=600;current['products'][0]['archived']=true;current['lastPayment']='card';
+    final restored=mergeBackup(current,decodeBackup(encodeBackup(old)));
+    expect(restored['products'][0]['twoItemPrice'],600);expect(restored['products'][0]['archived'],true);expect(restored['lastPayment'],'card');
+    final explicit=clone(restored);explicit['products'][0]['twoItemPrice']=null;explicit['products'][0]['archived']=false;explicit['lastPayment']='cash';
+    final chosen=mergeBackup(current,decodeBackup(encodeBackup(explicit)));
+    expect(chosen['products'][0]['twoItemPrice'],null);expect(chosen['products'][0]['archived'],false);expect(chosen['lastPayment'],'cash');
   });
 }

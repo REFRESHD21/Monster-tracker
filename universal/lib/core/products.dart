@@ -53,7 +53,8 @@ void validateProductChanges(Obj before, Obj after, {bool restoring=false}) {
   final current = objects(before['products']), next = objects(after['products']);
   for (final p in current) {
     final replacement = next.where((n) => n['id'] == p['id']).firstOrNull;
-    if (replacement == null && !productRemoval(before, p['id']).canDelete) {
+    final remainingReferences={...after}..remove('products');
+    if (replacement == null && (!productRemoval(before, p['id']).canDelete || referencesProduct(remainingReferences,p['id']))) {
       throw const FormatException('Product has stock, history or references. Resolve stock and pending items, then archive it instead.');
     }
     if (!restoring && replacement != null && !isArchived(p) && isArchived(replacement) && !productRemoval(before, p['id']).canArchive) {

@@ -93,7 +93,14 @@ Obj mergeBackup(Obj current, Obj incoming) {
   if(current['businessId']==incoming['businessId'] && canonical(next.take(old.length).toList())==canonical(old) && canonical(current['legacy'])==canonical(incoming['legacy'])) {
     final restored=clone(incoming), receiptIds={for(final a in objects(restored['attachments'])) a['id']:a};
     for(final a in objects(current['attachments'])) {if(receiptIds.containsKey(a['id']) && canonical(receiptIds[a['id']])!=canonical(a))throw const FormatException('Conflicting receipt.');if(!receiptIds.containsKey(a['id']))(restored['attachments'] as List).add(a);}
-    for(final p in objects(current['products'])) {if(!objects(restored['products']).any((n)=>n['id']==p['id']))(restored['products'] as List).add(p);}
+    for(final p in objects(current['products'])) {
+      final replacement=objects(restored['products']).where((n)=>n['id']==p['id']).firstOrNull;
+      if(replacement==null){(restored['products'] as List).add(p);}
+      else {for(final key in ['archived','twoItemPrice']){if(!replacement.containsKey(key) && p.containsKey(key))replacement[key]=p[key];}}
+    }
+    // A 2.0.0 backup predates these preferences; absence must not reset them
+    // when importing into this same business. Explicit new values still restore.
+    if(!restored.containsKey('lastPayment') && current.containsKey('lastPayment'))restored['lastPayment']=current['lastPayment'];
     validateState(restored);return restored;
   }
   if(current['businessId']!=incoming['businessId'] || canonical(old.take(next.length).toList())!=canonical(next) || canonical(current['legacy'])!=canonical(incoming['legacy'])) throw const FormatException('Different or conflicting history. Restore into an empty installation; current records were not changed.');
