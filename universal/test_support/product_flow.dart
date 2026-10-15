@@ -10,6 +10,9 @@ import 'package:business_tracker/services/repository.dart';
 Future<void> exerciseProductFlow(WidgetTester tester, Repository repo,
     {required Future<void> Function(String) screenshot}) async {
   Future<void> tapVisible(Finder target) async {
+    if(target.evaluate().isEmpty){
+      await tester.scrollUntilVisible(target,150,scrollable:find.byType(Scrollable).last);
+    }
     await Scrollable.ensureVisible(tester.element(target), alignment: .5);
     await tester.pumpAndSettle();
     await tester.tap(target);
@@ -20,7 +23,7 @@ Future<void> exerciseProductFlow(WidgetTester tester, Repository repo,
     (configured['products'] as List).add({'id':'unused-product-001','name':'Unused flavour','category':'Drinks','variant':'','purchaseCost':0,'sellingPrice':300,'minimum':0,'barcode':'','photo':null});
     await repo.save(configured);
     await tester.pumpWidget(TrackerApp(key:const ValueKey('fast-sales'),repository:repo));await tester.pumpAndSettle();
-    await tester.tap(find.descendant(of:find.byType(NavigationBar),matching:find.text('Products')));await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of:find.byType(NavigationBar),matching:find.text('Products')));await tester.pumpAndSettle();expect(find.text('Active products'),findsOneWidget);
     await tapVisible(find.byKey(const ValueKey('product-options-device-product-001')));
     await tapVisible(find.text('Edit product / prices'));
     final dealField=find.byWidgetPredicate((w)=>w is TextField && w.decoration?.labelText=='Optional 2-item deal TOTAL (AUD; blank disables)');
