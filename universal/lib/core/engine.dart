@@ -50,22 +50,28 @@ class Accounts {
     for (final p in products) {
       earned[p['id'] as String] = {'productId':p['id'],'name':p['name'],'variant':p['variant'] ?? '', 'unitsSold':0,'revenue':0,'cogs':0,'profit':0};
     }
+    final productById={for(final p in products)p['id'] as String:p},unknownEarnedByProduct=<String,int>{},unknownBySale=<String,Map<String,int>>{};
     var revenue=0,cogs=0,units=0;
     for (final r in chosen) {
       if (!['single','deal','sale','refund','correction','goods_return'].contains(r['kind'])) continue;
       final p=earned[r['productId']]; if(p==null) continue;
       final e=history[r['id']]; final original=e?.e['type'];
-      if (['single','deal','sale'].contains(original)) {final sold=objects(e!.e['allocations']).where((a)=>a['productId']==r['productId']).fold<int>(0,(sum,a)=>sum+a['quantity'] as int);p['unitsSold']+=sold;units+=sold;}
+      if (['single','deal','sale'].contains(original)) {final sale=e!;final sold=objects(sale.e['allocations']).where((a)=>a['productId']==r['productId']).fold<int>(0,(sum,a)=>sum+a['quantity'] as int);p['unitsSold']+=sold;units+=sold;
+        final configuredCost=productById[r['productId']]?['purchaseCost'] as int? ?? 0;
+        if(configuredCost>0)for(final lot in sale.lots.where((lot)=>lot.product==r['productId']&&lot.cost==0)){
+          final origin=history[lot.key.split('|').first];final originCost=origin?.lots.where((source)=>source.product==r['productId']).fold<int>(0,(sum,source)=>sum+source.cost) ?? 0;
+          if(originCost==0){unknownEarnedByProduct[r['productId']]=(unknownEarnedByProduct[r['productId']]??0)+lot.quantity;(unknownBySale.putIfAbsent(sale.e['id'] as String,()=>{}))[r['productId']]=(unknownBySale[sale.e['id']]![r['productId']]??0)+lot.quantity;}
+        }
+      }
       else if(original=='return'){final returned=e!.lots.where((lot)=>lot.product==r['productId']).fold<int>(0,(sum,lot)=>sum+lot.quantity);p['unitsSold']-=returned;units-=returned;}
-      else if(original=='undo'){final source=history[e!.e['target']];if(source!=null&&['single','deal','sale'].contains(source.e['type'])){final reversed=objects(source.e['allocations']).where((a)=>a['productId']==r['productId']).fold<int>(0,(sum,a)=>sum+a['quantity'] as int);p['unitsSold']-=reversed;units-=reversed;}else if(source?.e['type']=='return'){final returned=source!.lots.where((lot)=>lot.product==r['productId']).fold<int>(0,(sum,lot)=>sum+lot.quantity);p['unitsSold']+=returned;units+=returned;}}
+      else if(original=='undo'){final source=history[e!.e['target']];if(source!=null&&['single','deal','sale'].contains(source.e['type'])){final reversed=objects(source.e['allocations']).where((a)=>a['productId']==r['productId']).fold<int>(0,(sum,a)=>sum+a['quantity'] as int);p['unitsSold']-=reversed;units-=reversed;final unknown=unknownBySale[source.e['id']]?[r['productId']]??0;if(unknown>0){final left=(unknownEarnedByProduct[r['productId']]??0)-unknown;if(left<=0)unknownEarnedByProduct.remove(r['productId']);else unknownEarnedByProduct[r['productId']]=left;}}else if(source?.e['type']=='return'){final returned=source!.lots.where((lot)=>lot.product==r['productId']).fold<int>(0,(sum,lot)=>sum+lot.quantity);p['unitsSold']+=returned;units+=returned;}}
       p['revenue'] += r['revenue'] as int;
       // Returns carry negative COGS in the existing FIFO ledger, reversing
       // the original units' cost when those units return to sellable stock.
       p['cogs'] += r['cogs'] as int;
     }
-    for(final p in earned.values){p['profit']=p['revenue']-p['cogs'];revenue+=p['revenue'] as int;cogs+=p['cogs'] as int;}
+    for(final p in earned.values){p['profit']=(unknownEarnedByProduct[p['productId']]??0)>0?null:p['revenue']-p['cogs'];revenue+=p['revenue'] as int;cogs+=p['cogs'] as int;}
     final potential=<String,Obj>{};var futureRevenue=0,futureCost=0,unknownCosts=0,unknownPrices=0;
-    final productById={for(final p in products)p['id'] as String:p};
     for(final entry in earned.entries){
       final p=productById[entry.key]!, stock=book.stock(entry.key), price=p['sellingPrice'] as int, remainingCost=book.lots.values.where((l)=>l.product==entry.key).fold<int>(0,(sum,l)=>sum+l.cost);
       final unitsWithCost=book.lots.values.where((l)=>l.product==entry.key && l.quantity>0 && l.cost>0).fold<int>(0,(sum,l)=>sum+l.quantity);
@@ -74,8 +80,8 @@ class Accounts {
       final estimate=price*stock;futureRevenue+=estimate;futureCost+=remainingCost;
       potential[entry.key]={'productId':entry.key,'name':p['name'],'variant':p['variant']??'','unitsSold':entry.value['unitsSold'],'revenue':entry.value['revenue'],'cogs':entry.value['cogs'],'profit':entry.value['profit'],'remaining':stock,'futureRevenue':stock>0&&price<=0?null:estimate,'futureCost':remainingCost,'futureProfit':stock>unitsWithCost||stock>0&&price<=0?null:estimate-remainingCost};
     }
-    final knownFutureRevenue=unknownPrices==0?futureRevenue:null,knownFutureProfit=unknownPrices==0&&unknownCosts==0?futureRevenue-futureCost:null;
-    return {'revenue':revenue,'cogs':cogs,'profit':revenue-cogs,'unitsSold':units,'futureRevenue':knownFutureRevenue,'futureCost':futureCost,'futureProfit':knownFutureProfit,'totalRevenue':knownFutureRevenue==null?null:revenue+knownFutureRevenue,'totalProfit':knownFutureProfit==null?null:revenue-cogs+knownFutureProfit,'unknownDates':rows.where((r)=>r['date']==null).length,'unknownCostUnits':unknownCosts,'unknownPriceUnits':unknownPrices,'products':potential.values.toList()};
+    final knownFutureRevenue=unknownPrices==0?futureRevenue:null,knownFutureProfit=unknownPrices==0&&unknownCosts==0?futureRevenue-futureCost:null,knownEarnedProfit=unknownEarnedByProduct.isEmpty?revenue-cogs:null;
+    return {'revenue':revenue,'cogs':cogs,'profit':knownEarnedProfit,'unitsSold':units,'futureRevenue':knownFutureRevenue,'futureCost':futureCost,'futureProfit':knownFutureProfit,'totalRevenue':knownFutureRevenue==null?null:revenue+knownFutureRevenue,'totalProfit':knownEarnedProfit==null||knownFutureProfit==null?null:knownEarnedProfit+knownFutureProfit,'unknownDates':rows.where((r)=>r['date']==null).length,'unknownCostUnits':unknownCosts,'unknownEarnedCostUnits':unknownEarnedByProduct.values.fold<int>(0,(sum,q)=>sum+q),'unknownPriceUnits':unknownPrices,'products':potential.values.toList()};
   }
 }
 Accounts calculate(List<Obj> events) {

@@ -54,6 +54,10 @@ void main() {
     final s=emptyState();s['products']=[product()..['sellingPrice']=350];s['events']=[event(id:'no-sale-stock-001',type:'restock',quantity:2,productId:'product-test-001',cost:0)];
     final p=validateState(s).salesProfit(objects(s['products']));expect(p['revenue'],0);expect(p['profit'],0);expect(p['futureRevenue'],700);expect(p['futureProfit'],isNull);expect(p['totalProfit'],isNull);expect(p['unknownCostUnits'],2);expect(objects(p['products']).single['unitsSold'],0);
   });
+  test('sold units with zero FIFO cost and configured nonzero cost mark profit incomplete',(){
+    final s=emptyState();s['products']=[product()];s['events']=[event(id:'unknown-cost-stock1',type:'restock',quantity:1,productId:'product-test-001',cost:0),event(id:'unknown-cost-sale1',type:'sale',quantity:1,productId:'product-test-001',revenue:350,payment:'cash')];
+    final p=validateState(s).salesProfit(objects(s['products']));expect(p['revenue'],350);expect(p['profit'],isNull);expect(p['unknownEarnedCostUnits'],1);expect(objects(p['products']).single['profit'],isNull);
+  });
   test('full refund reverses recorded revenue and discounts remain actual; future uses current price',(){
     final products=[product()..['sellingPrice']=300];
     final events=[event(id:'refund-stock-0001',type:'restock',quantity:2,productId:'product-test-001',cost:200),event(id:'refund-sale-00001',type:'sale',quantity:1,productId:'product-test-001',revenue:180,payment:'cash'),event(id:'refund-part-00001',type:'refund',target:'refund-sale-00001',revenue:80),event(id:'refund-part-00002',type:'refund',target:'refund-sale-00001',revenue:100)];

@@ -46,10 +46,12 @@ COGS rows; it does not subtract fees, expenses or damaged/missing stock losses.
 Future inventory estimates use each product's current selling price and the
 remaining FIFO lots. Unknown dates stay out of bounded date ranges.
 
-The ledger stores costs as integer cents and treats a zero-cost remaining lot as
-incomplete when estimating future profit. This is conservative: genuinely free
-stock is also flagged because the current records do not distinguish a free
-purchase from an unrecorded cost. A product with no configured positive selling
+The ledger stores costs as integer cents and treats zero-cost stock as incomplete
+when the current product cost setting is positive. This can flag genuinely free
+stock too because the ledger cannot distinguish a free purchase from an
+unrecorded cost. This check applies to both current inventory and sold units;
+zero-cost rows remain usable when the product is explicitly configured with a
+zero purchase cost. A product with no configured positive selling
 price is likewise shown as incomplete while stock remains. Physical returns
 follow the existing behavior and re-enter FIFO sellable stock; the current data
 model does not label returned goods as damaged, so mark damaged returns with the
