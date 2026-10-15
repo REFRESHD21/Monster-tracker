@@ -15,7 +15,7 @@ void main(){
   final binding=IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   testWidgets('upgrade retains records and new universal saves survive restart', (tester) async {
     Future<void> tapVisible(Finder target) async {
-      await tester.ensureVisible(target, alignment: .5);
+      await Scrollable.ensureVisible(tester.element(target), alignment: .5);
       await tester.pumpAndSettle();
       await tester.tap(target);
       await tester.pumpAndSettle();
@@ -42,7 +42,7 @@ void main(){
     await tapVisible(find.byKey(const ValueKey('product-options-device-product-001')));
     await tapVisible(find.text('Edit product / prices'));
     final dealField=find.byWidgetPredicate((w)=>w is TextField && w.decoration?.labelText=='Optional 2-item deal TOTAL (AUD; blank disables)');
-    await tester.ensureVisible(dealField, alignment: .5);await tester.pumpAndSettle();await tester.enterText(dealField,'9.00');
+    await Scrollable.ensureVisible(tester.element(dealField), alignment: .5);await tester.pumpAndSettle();await tester.enterText(dealField,'9.00');
     await tester.tap(find.text('Save product'));await tester.pumpAndSettle();
     expect(objects(repo.state['products']).firstWhere((p)=>p['id']=='device-product-001')['twoItemPrice'],900);
     final historyBefore=objects(repo.state['events']).length;
