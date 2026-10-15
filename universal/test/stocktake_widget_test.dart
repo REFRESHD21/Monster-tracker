@@ -36,7 +36,7 @@ void main() {
         await tester.tap(find.byKey(const ValueKey('save-stocktake-count')));await tester.pumpAndSettle();
         expect(objects(repo.state['stocktakes']).single['counts'],hasLength(1));
         expect(tester.widget<FilledButton>(find.byKey(const ValueKey('confirm-stocktake'))).onPressed,isNotNull);
-        await tester.tap(find.byKey(const ValueKey('confirm-stocktake')));await tester.pumpAndSettle();
+        await tester.tap(find.byKey(const ValueKey('confirm-stocktake')));await tester.pump();await tester.pump(const Duration(milliseconds:350));
         await tester.tap(find.text('Confirm adjustments'));await tester.pumpAndSettle();
         expect(repo.state['stocktakes'].single['status'],'completed');
         expect(validateState(repo.state).book.stock('stocktake-ui-product-01'),3);
