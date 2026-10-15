@@ -57,10 +57,10 @@ adb shell am start -W -n au.monster.tracker.plus/au.monster.tracker.MainActivity
 wait_for_ui 'CANS REMAINING' baseline-release
 adb shell am force-stop au.monster.tracker.plus
 # The actual shipped Flutter release must read the populated records before update.
-adb install -r ../baseline-flutter-release/Business-Tracker-2.1.0.apk
+adb install -r ../baseline-flutter-release/Business-Tracker-2.1.1.apk
 adb shell am start -W -n au.monster.tracker.plus/au.monster.tracker.MainActivity
-wait_for_ui 'Your business at a glance' flutter-2.1.0
-adb exec-out screencap -p > device-evidence/baseline-flutter-2.1.0.png
+wait_for_ui 'Your business at a glance' flutter-2.1.1
+adb exec-out screencap -p > device-evidence/baseline-flutter-2.1.1.png
 adb shell am force-stop au.monster.tracker.plus
 adb shell cmd connectivity airplane-mode enable
 adb shell svc wifi disable
@@ -75,7 +75,7 @@ import xml.etree.ElementTree as ET,re
 root=ET.parse('device-evidence/direct-release-ui.xml').getroot()
 labels=[node.get(k,'') for node in root.iter() for k in ('text','content-desc')]
 assert any(re.search(r'(?<![0-9])25(?![0-9])',label) for label in labels), labels
-print('Release 2.1.0 → release 2.1.1 shows the original 25 units before any test build runs.')
+print('Release 2.1.1 → release 2.1.2 shows the original 25 units before any test build runs.')
 CHECK
 adb exec-out screencap -p > device-evidence/direct-release-upgrade.png
 adb logcat -d > device-evidence/direct-release-logcat.txt

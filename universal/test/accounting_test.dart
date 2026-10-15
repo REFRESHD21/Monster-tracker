@@ -38,6 +38,22 @@ void main() {
     s['products']=[product()];s['events']=[event(id:'restock-test-001',type:'restock',quantity:30,productId:'product-test-001',cost:3001),event(id:'sale-test-00001',type:'sale',quantity:7,productId:'product-test-001',revenue:2450,payment:'cash')];
     final a=validateState(s);expect(a.book.stock('product-test-001'),23);expect(a.summary()['cogs'],700);expect(a.summary()['netProfit'],1750);
   });
+  test('sales and product profit use actual prices, FIFO costs, refunds and physical returns',(){
+    final products=[product()..['sellingPrice']=500];
+    final events=[event(id:'profit-stock-001',type:'restock',quantity:2,productId:'product-test-001',cost:300),event(id:'profit-stock-002',type:'restock',quantity:1,productId:'product-test-001',cost:250),event(id:'profit-sale-00001',type:'sale',quantity:2,productId:'product-test-001',revenue:500,payment:'cash'),event(id:'profit-sale-00002',type:'sale',quantity:1,productId:'product-test-001',revenue:100,payment:'cash'),event(id:'profit-refund-001',type:'refund',target:'profit-sale-00001',revenue:100),event(id:'profit-return-001',type:'return',target:'profit-sale-00001',quantity:1)];
+    final a=calculate(events),p=a.salesProfit(products);
+    expect(p['revenue'],500);expect(p['cogs'],400);expect(p['profit'],100);expect(p['unitsSold'],2);
+    expect(p['futureRevenue'],500);expect(p['futureCost'],150);expect(p['futureProfit'],350);expect(p['totalRevenue'],1000);expect(p['totalProfit'],450);
+    final line=objects(p['products']).single;expect(line['revenue'],500);expect(line['profit'],100);expect(line['remaining'],1);
+  });
+  test('damaged stock and business expenses do not alter sales product profit',(){
+    final s=emptyState();s['products']=[product()..['sellingPrice']=500];s['events']=[event(id:'damage-stock-001',type:'restock',quantity:2,productId:'product-test-001',cost:300),event(id:'damage-sale-0001',type:'sale',quantity:1,productId:'product-test-001',revenue:100,payment:'cash'),event(id:'damage-writeoff-01',type:'damaged',quantity:1,productId:'product-test-001'),event(id:'damage-expense-001',type:'expense',cost:900)];
+    final a=validateState(s),p=a.salesProfit(objects(s['products']));expect(p['revenue'],100);expect(p['cogs'],150);expect(p['profit'],-50);expect(p['futureRevenue'],0);expect(p['futureProfit'],0);expect(a.summary()['netProfit'],-1100);
+  });
+  test('no sales with stock shows future potential and missing cost is flagged',(){
+    final s=emptyState();s['products']=[product()..['sellingPrice']=350];s['events']=[event(id:'no-sale-stock-001',type:'restock',quantity:2,productId:'product-test-001',cost:0)];
+    final p=validateState(s).salesProfit(objects(s['products']));expect(p['revenue'],0);expect(p['profit'],0);expect(p['futureRevenue'],700);expect(p['futureProfit'],isNull);expect(p['totalProfit'],isNull);expect(p['unknownCostUnits'],2);expect(objects(p['products']).single['unitsSold'],0);
+  });
   test('refund retains sale fees; return restores original FIFO value; cannot overrefund/return', () {
     final events=[event(id:'restock-test-001',type:'restock',quantity:3,productId:'product-test-001',cost:1000),event(id:'sale-test-00001',type:'sale',quantity:3,productId:'product-test-001',revenue:1500,fee:30,payment:'card'),event(id:'refund-test-001',type:'refund',target:'sale-test-00001',revenue:500),event(id:'return-test-001',type:'return',quantity:1,target:'sale-test-00001')];
     final a=calculate(events);expect(a.book.value,333);expect(a.summary()['revenue'],1000);expect(a.summary()['fees'],30);expect(a.summary()['cogs'],667);

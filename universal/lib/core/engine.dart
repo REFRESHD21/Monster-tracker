@@ -42,6 +42,41 @@ class Accounts {
     r['inventoryValue'] = book.value; r['unknownDates'] = rows.where((r) => r['date'] == null).length;
     return r;
   }
+  /// Sales-only performance and current-stock estimates, independent of
+  /// operating expenses and damaged/missing stock write-offs.
+  Obj salesProfit(List<Obj> products, [int? from, int? to]) {
+    final chosen = rows.where((r) => from == null || r['date'] != null && (r['date'] as int) >= from && (to == null || (r['date'] as int) < to));
+    final earned = <String, Obj>{};
+    for (final p in products) {
+      earned[p['id'] as String] = {'productId':p['id'],'name':p['name'],'variant':p['variant'] ?? '', 'unitsSold':0,'revenue':0,'cogs':0,'profit':0};
+    }
+    var revenue=0,cogs=0,units=0;
+    for (final r in chosen) {
+      if (!['single','deal','sale','refund','correction','goods_return'].contains(r['kind'])) continue;
+      final p=earned[r['productId']]; if(p==null) continue;
+      final e=history[r['id']]; final original=e?.e['type'];
+      if (['single','deal','sale'].contains(original)) {final sold=objects(e!.e['allocations']).where((a)=>a['productId']==r['productId']).fold<int>(0,(sum,a)=>sum+a['quantity'] as int);p['unitsSold']+=sold;units+=sold;}
+      else if(original=='return'){final returned=e!.lots.where((lot)=>lot.product==r['productId']).fold<int>(0,(sum,lot)=>sum+lot.quantity);p['unitsSold']-=returned;units-=returned;}
+      else if(original=='undo'){final source=history[e!.e['target']];if(source!=null&&['single','deal','sale'].contains(source.e['type'])){final reversed=objects(source.e['allocations']).where((a)=>a['productId']==r['productId']).fold<int>(0,(sum,a)=>sum+a['quantity'] as int);p['unitsSold']-=reversed;units-=reversed;}else if(source?.e['type']=='return'){final returned=source!.lots.where((lot)=>lot.product==r['productId']).fold<int>(0,(sum,lot)=>sum+lot.quantity);p['unitsSold']+=returned;units+=returned;}}
+      p['revenue'] += r['revenue'] as int;
+      // Returns carry negative COGS in the existing FIFO ledger, reversing
+      // the original units' cost when those units return to sellable stock.
+      p['cogs'] += r['cogs'] as int;
+    }
+    for(final p in earned.values){p['profit']=p['revenue']-p['cogs'];revenue+=p['revenue'] as int;cogs+=p['cogs'] as int;}
+    final potential=<String,Obj>{};var futureRevenue=0,futureCost=0,unknownCosts=0,unknownPrices=0;
+    final productById={for(final p in products)p['id'] as String:p};
+    for(final entry in earned.entries){
+      final p=productById[entry.key]!, stock=book.stock(entry.key), price=p['sellingPrice'] as int, remainingCost=book.lots.values.where((l)=>l.product==entry.key).fold<int>(0,(sum,l)=>sum+l.cost);
+      final unitsWithCost=book.lots.values.where((l)=>l.product==entry.key && l.quantity>0 && l.cost>0).fold<int>(0,(sum,l)=>sum+l.quantity);
+      if(stock>unitsWithCost) unknownCosts += stock-unitsWithCost;
+      if(price<=0 && stock>0)unknownPrices+=stock;
+      final estimate=price*stock;futureRevenue+=estimate;futureCost+=remainingCost;
+      potential[entry.key]={'productId':entry.key,'name':p['name'],'variant':p['variant']??'','unitsSold':entry.value['unitsSold'],'revenue':entry.value['revenue'],'cogs':entry.value['cogs'],'profit':entry.value['profit'],'remaining':stock,'futureRevenue':stock>0&&price<=0?null:estimate,'futureCost':remainingCost,'futureProfit':stock>unitsWithCost||stock>0&&price<=0?null:estimate-remainingCost};
+    }
+    final knownFutureRevenue=unknownPrices==0?futureRevenue:null,knownFutureProfit=unknownPrices==0&&unknownCosts==0?futureRevenue-futureCost:null;
+    return {'revenue':revenue,'cogs':cogs,'profit':revenue-cogs,'unitsSold':units,'futureRevenue':knownFutureRevenue,'futureCost':futureCost,'futureProfit':knownFutureProfit,'totalRevenue':knownFutureRevenue==null?null:revenue+knownFutureRevenue,'totalProfit':knownFutureProfit==null?null:revenue-cogs+knownFutureProfit,'unknownDates':rows.where((r)=>r['date']==null).length,'unknownCostUnits':unknownCosts,'unknownPriceUnits':unknownPrices,'products':potential.values.toList()};
+  }
 }
 Accounts calculate(List<Obj> events) {
   final book = Book(), history = <String, Action>{}, rows = <Obj>[];

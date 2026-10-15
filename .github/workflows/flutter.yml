@@ -83,7 +83,7 @@ jobs:
       - uses: actions/download-artifact@v4
         with:
           name: verified-android-update
-          run-id: 38676547102
+          run-id: 38696590864
           github-token: ${{ github.token }}
           path: baseline-flutter-release
       - uses: actions/cache/restore@v4
@@ -91,7 +91,7 @@ jobs:
           path: ${{ env.MONSTER_DEBUG_KEYSTORE }}
           key: monster-plus-debug-signing-key-v1
           fail-on-cache-miss: true
-      - name: Require matching 1.6.3 and 2.1.0 certificates BEFORE compiling update
+      - name: Require matching 1.6.3 and 2.1.1 certificates BEFORE compiling update
         run: |
           set -euo pipefail
           sdkmanager 'build-tools;35.0.0'
@@ -101,9 +101,9 @@ jobs:
           keytool -exportcert -keystore "$MONSTER_DEBUG_KEYSTORE" -storepass android -alias androiddebugkey -file /tmp/compatible.der
           expected=$(sha256sum /tmp/compatible.der | cut -d' ' -f1)
           grep -F "Signer #1 certificate SHA-256 digest: $expected" baseline-cert.txt
-          "$tools/apksigner" verify --print-certs baseline-flutter-release/Business-Tracker-2.1.0.apk | tee baseline-flutter-cert.txt
+          "$tools/apksigner" verify --print-certs baseline-flutter-release/Business-Tracker-2.1.1.apk | tee baseline-flutter-cert.txt
           grep -F "Signer #1 certificate SHA-256 digest: $expected" baseline-flutter-cert.txt
-          "$tools/aapt" dump badging baseline-flutter-release/Business-Tracker-2.1.0.apk | grep -F "package: name='au.monster.tracker.plus' versionCode='13'"
+          "$tools/aapt" dump badging baseline-flutter-release/Business-Tracker-2.1.1.apk | grep -F "package: name='au.monster.tracker.plus' versionCode='14'"
           "$tools/apksigner" verify --print-certs baseline-debug/app-debug.apk | grep -F "Signer #1 certificate SHA-256 digest: $expected"
       - run: python3 scripts/flutter/bootstrap.py
       - working-directory: universal
@@ -127,14 +127,14 @@ jobs:
           expected=$(sha256sum /tmp/compatible.der | cut -d' ' -f1)
           grep -F "Signer #1 certificate SHA-256 digest: $expected" signing-verification.txt
           "$tools/aapt" dump badging "$apk" | tee apk-verification.txt
-          grep -F "package: name='au.monster.tracker.plus' versionCode='14'" apk-verification.txt
+          grep -F "package: name='au.monster.tracker.plus' versionCode='15'" apk-verification.txt
           ! grep -q application-debuggable apk-verification.txt
           unzip -tq "$apk"
           python3 scripts/flutter/verify-oauth-apk.py "$apk" | tee oauth-verification.txt
           mkdir -p dist
-          cp "$apk" dist/Business-Tracker-2.1.1.apk
+          cp "$apk" dist/Business-Tracker-2.1.2.apk
           cp signing-verification.txt apk-verification.txt oauth-verification.txt dist/
-          cd dist && sha256sum Business-Tracker-2.1.1.apk > SHA256SUMS.txt
+          cd dist && sha256sum Business-Tracker-2.1.2.apk > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
           name: verified-android-update
