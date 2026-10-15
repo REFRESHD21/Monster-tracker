@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'codec.dart';
 import 'engine.dart';
 import 'legacy_contract.dart';
+import 'stocktakes.dart';
 
 Obj importLegacy(String text) {
   final root=obj(strictJson(text)), version=integer(root['version'],1,6);
@@ -101,6 +102,16 @@ Obj mergeBackup(Obj current, Obj incoming) {
     // A 2.0.0 backup predates these preferences; absence must not reset them
     // when importing into this same business. Explicit new values still restore.
     if(!restored.containsKey('lastPayment') && current.containsKey('lastPayment'))restored['lastPayment']=current['lastPayment'];
+    // Stocktake drafts can change without adding ledger movements. Preserve
+    // them when restoring an older same-business backup, and reject ambiguous
+    // same-ID edits instead of silently discarding either count.
+    restored['stocktakes'] ??= <dynamic>[];
+    final restoredSessions={for(final x in stocktakeSessions(restored))x['id']:x};
+    for(final x in stocktakeSessions(current)){
+      final old=restoredSessions[x['id']];
+      if(old==null){(restored['stocktakes'] as List).add(clone(x));}
+      else if(canonical(old)!=canonical(x))throw const FormatException('Conflicting stocktake history. Restore was not applied.');
+    }
     validateState(restored);return restored;
   }
   if(current['businessId']!=incoming['businessId'] || canonical(old.take(next.length).toList())!=canonical(next) || canonical(current['legacy'])!=canonical(incoming['legacy'])) throw const FormatException('Different or conflicting history. Restore into an empty installation; current records were not changed.');

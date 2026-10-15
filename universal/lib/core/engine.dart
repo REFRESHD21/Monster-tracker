@@ -4,7 +4,7 @@ import 'purchases.dart';
 
 const legacyProduct = 'legacy-unassigned';
 const themes = ['light', 'dark', 'green', 'ocean', 'purple', 'warm neutral'];
-Obj emptyState() => {'format': 'business-tracker', 'version': 1, 'currency': 'AUD', 'timeZone': 'Australia/Perth', 'businessId': '', 'businessName': 'My business', 'theme': 'green', 'products': <dynamic>[], 'events': <dynamic>[], 'attachments': <dynamic>[], 'legacy': null, 'legacyCount': 0};
+Obj emptyState() => {'format': 'business-tracker', 'version': 1, 'currency': 'AUD', 'timeZone': 'Australia/Perth', 'businessId': '', 'businessName': 'My business', 'theme': 'green', 'products': <dynamic>[], 'events': <dynamic>[], 'attachments': <dynamic>[], 'stocktakes': <dynamic>[], 'legacy': null, 'legacyCount': 0};
 class Lot {
   final String key, product; final int age; int quantity, cost;
   Lot(this.key, this.product, this.age, this.quantity, this.cost);
@@ -160,7 +160,7 @@ Accounts calculate(List<Obj> events) {
     } else if (type == 'expense') {
       if(q!=0 || revenue!=0 || fee!=0 || output!=0 || e['payment']!='none')throw const FormatException('Invalid expense.');
       final r = row(e, null); r['expenses'] = cost - input; r['inputGst'] = input; er.add(r);
-    } else if (['restock','single','deal','sale','missing','damaged','lost'].contains(type)) {
+    } else if (['restock','single','deal','sale','missing','damaged','lost','stocktake_found'].contains(type)) {
       final allocations = objects(e['allocations']);
       if (q < 1 || allocations.isEmpty || allocations.fold<int>(0, (s,a) => s + integer(a['quantity'],1,10000)) != q || allocations.map((a)=>a['productId']).toSet().length != allocations.length) throw const FormatException('Invalid product quantities.');
       final sale = ['single','deal','sale'].contains(type);
@@ -170,7 +170,7 @@ Accounts calculate(List<Obj> events) {
       for(final a in allocations) {
         final p = string(a['productId'], 100), n = a['quantity'] as int, r = row(e,p);
         final purchase = share(cost,before,n,q), credit = share(input,before,n,q);
-        if(type == 'restock') { final lot = Lot('$id|$p',p,book.age++,n,purchase-credit); parts.add(lot);book.add(lot); }
+        if(type == 'restock' || type == 'stocktake_found') { final lot = Lot('$id|$p',p,book.age++,n,purchase-credit); parts.add(lot);book.add(lot); }
         else { final used = book.take(p,n);parts.addAll(used);r[sale ? 'cogs' : 'losses'] = costOf(used); }
         r['revenue'] = share(revenue,before,n,q); if(sale) r[e['payment'] as String] = r['revenue'];
         r['fees'] = share(fee,before,n,q);r['purchases'] = purchase;r['inputGst'] = credit;r['outputGst'] = share(output,before,n,q);er.add(r);before += n;
@@ -183,6 +183,59 @@ Accounts calculate(List<Obj> events) {
 Obj event({required String id, required String type, int quantity = 0, String? productId, int revenue = 0, int fee = 0, int cost = 0, String payment = 'none', String note = '', String? target, int? date, int inputGst = 0, int outputGst = 0}) => {
   'id':id,'type':type,'quantity':quantity,'revenue':revenue,'fee':fee,'cost':cost,'payment':payment,'note':note,'target':target,'date':date ?? DateTime.now().millisecondsSinceEpoch,'recordedAt':DateTime.now().millisecondsSinceEpoch,'inputGst':inputGst,'outputGst':outputGst,'allocations':productId == null ? <dynamic>[] : [{'productId':productId,'quantity':quantity}],
 };
+
+void validateStocktakes(Obj state) {
+  final sessions = objects(state['stocktakes'] ?? const <dynamic>[]), ids = <String>{};
+  final ledger = objects(state['events']), events = {for (final e in ledger) e['id'] as String: e};
+  final linkedEvents = <String>{};
+  for (final e in ledger.where((e) => e['stocktakeSessionId'] != null)) {
+    final sessionId = string(e['stocktakeSessionId'], 100);
+    if (!linkedEvents.add(e['id'] as String) || !sessions.any((s) => s['id'] == sessionId)) throw const FormatException('Invalid stocktake adjustment link.');
+    if (!['missing', 'damaged', 'stocktake_found'].contains(e['type'])) throw const FormatException('Unsupported stocktake adjustment type.');
+  }
+  for (final s in sessions) {
+    final id = string(s['id'], 100), status = s['status'];
+    integer(s['startedAt'], 946684800000, 4102444800000);
+    if (id.isEmpty || !ids.add(id) || !['counting', 'completed'].contains(status)) throw const FormatException('Invalid stocktake session.');
+    final productIds = <String>{};
+    for (final p in objects(s['snapshotProducts'])) {
+      final productId = string(p['productId'], 100);
+      if (!productIds.add(productId) || !objects(state['products']).any((x) => x['id'] == productId)) throw const FormatException('Invalid stocktake product snapshot.');
+      string(p['name'], 120); string(p['variant'], 120); integer(p['expectedAtStart'], 0, 10000000);
+    }
+    final counted = <String>{};
+    for (final c in objects(s['counts'])) {
+      final productId = string(c['productId'], 100), eventCount = integer(c['eventCount'], 0, ledger.length);
+      if (!productIds.contains(productId) || !counted.add(productId)) throw const FormatException('Invalid stocktake count.');
+      integer(c['expectedSellable'], 0, 10000); integer(c['sellable'], 0, 10000); integer(c['damaged'], 0, 10000);
+      integer(c['countedAt'], 946684800000, 4102444800000);
+      if (calculate(ledger.take(eventCount).toList()).book.stock(productId) != c['expectedSellable']) throw const FormatException('Stocktake count does not match its inventory snapshot.');
+    }
+    final adjustmentIds = (s['adjustmentEventIds'] as List).map((x) => string(x, 100)).toList();
+    if (adjustmentIds.toSet().length != adjustmentIds.length) throw const FormatException('Duplicate stocktake adjustment reference.');
+    if (status == 'completed') {
+      integer(s['completedAt'], 946684800000, 4102444800000);
+      if (counted.length != productIds.length || adjustmentIds.any((eventId) => events[eventId]?['stocktakeSessionId'] != id) || linkedEvents.where((eventId) => events[eventId]?['stocktakeSessionId'] == id).length != adjustmentIds.length) throw const FormatException('Incomplete stocktake history.');
+    } else if (adjustmentIds.isNotEmpty || s.containsKey('completedAt')) {
+      throw const FormatException('An open stocktake cannot contain applied adjustments.');
+    }
+  }
+}
+
+void validateStocktakeChanges(Obj before, Obj after) {
+  final updated = {for (final s in objects(after['stocktakes'] ?? const <dynamic>[])) s['id'] as String: s};
+  for (final prior in objects(before['stocktakes'] ?? const <dynamic>[])) {
+    final current = updated[prior['id']];
+    if (current == null) throw const FormatException('Stocktake history cannot be deleted.');
+    if (prior['status'] == 'completed' && canonical(prior) != canonical(current)) throw const FormatException('Completed stocktake history cannot be edited.');
+    if (prior['status'] == 'counting') {
+      for (final key in ['id', 'status', 'startedAt', 'snapshotProducts']) {
+        if (canonical(prior[key]) != canonical(current[key])) throw const FormatException('Stocktake identity and starting snapshot cannot be changed.');
+      }
+    }
+  }
+}
+
 Accounts validateState(Obj s) {
   if(s['format'] != 'business-tracker' || s['version'] != 1 || s['currency'] != 'AUD' || s['timeZone'] != 'Australia/Perth' || !themes.contains(s['theme'])) throw const FormatException('Unsupported tracker backup.');
   if(string(s['businessName'],120).trim().isEmpty) throw const FormatException('Enter a business name.');
@@ -200,6 +253,7 @@ Accounts validateState(Obj s) {
   }
   for(final e in objects(s['events'])) { for(final a in objects(e['allocations'])) {if(!products.contains(a['productId'])) throw const FormatException('Unknown product in history.');} if(e['type']=='transfer' && (!products.contains(e['from']) || !products.contains(e['to']))) throw const FormatException('Unknown transfer product.'); }
   purchaseHistory(s);
+  validateStocktakes(s);
   final ids=<String>{};for(final a in objects(s['attachments'])) {verifyAttachment(a,s);if(!ids.add(a['id'] as String)) throw const FormatException('Duplicate receipt.');}
   final result=calculate(objects(s['events']));for(final a in objects(s['attachments'])) {if(!result.history.containsKey(a['eventId'])) throw const FormatException('Receipt has no transaction.');}
   return result;

@@ -15,6 +15,7 @@ import 'core/engine.dart';
 import 'core/legacy.dart';
 import 'core/products.dart';
 import 'core/purchases.dart';
+import 'core/stocktakes.dart';
 import 'sale_sheet.dart';
 import 'services/repository.dart';
 import 'services/backups.dart';
@@ -126,6 +127,7 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
       if(archivedView)text('Archived products stay in history and reports. Restore a product to sell it again.'),
       if(!archivedView)action('Add product',Icons.add,()=>editProduct(c)),
       if(!archivedView)action('Purchase stock',Icons.shopping_bag_outlined,()=>purchaseLedger(c)),
+      if(!archivedView)action('Stocktake mode',Icons.fact_check_outlined,()=>stocktakeMode(c)),
       TextField(key:ValueKey(archivedView),decoration:const InputDecoration(labelText:'Find a name, category, variant or barcode',prefixIcon:Icon(Icons.search)),onChanged:(v)=>setState(()=>query=v)),const SizedBox(height:12),
       if(shown.isEmpty)text(archivedView?'No archived products.':'No matching active products.'),
       for(final p in shown)Card(child:ListTile(contentPadding:const EdgeInsets.all(12),leading:p['photo']==null?const CircleAvatar(child:Icon(Icons.inventory_2_outlined)):ClipRRect(borderRadius:BorderRadius.circular(12),child:Image.memory(Uint8List.fromList(attachmentBytes(obj(p['photo']))),width:52,height:52,fit:BoxFit.cover)),title:Text(productName(p['id']),style:const TextStyle(fontWeight:FontWeight.w600)),subtitle:Text('${p['category']}\n${a.book.stock(p['id'])} in stock · ${money(p['sellingPrice'])} each${p['twoItemPrice']==null?'':' · 2 for ${money(p['twoItemPrice'])}'}'),
@@ -143,6 +145,42 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
       await showDialog<void>(context:c,builder:(d)=>AlertDialog(title:Text(productLabel(p)),content:Text('Archived · ${accounts.book.stock(p['id'])} units\n\n${productRemoval(s,p['id']).explanation}\n\nRestore to edit or record new stock.'),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Close')),FilledButton(onPressed:()=>perform(c,()async{final next=clone(s);objects(next['products']).firstWhere((n)=>n['id']==p['id'])['archived']=false;await repo.save(next);if(d.mounted)Navigator.pop(d);},message:'Product restored.'),child:const Text('Restore'))]));return;
     }
     await showModalBottomSheet<void>(context:c,isScrollControlled:true,showDragHandle:true,builder:(b)=>SafeArea(child:SingleChildScrollView(padding:const EdgeInsets.all(24),child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[title(productName(p['id'])),text('${accounts.book.stock(p['id'])} units available · selling price ${money(p['sellingPrice'])}'),for(final item in [('sale','Record sale',Icons.point_of_sale),('restock','Receive / restock',Icons.add_box_outlined),('missing','Missing stock',Icons.search_off),('damaged','Damaged stock',Icons.broken_image_outlined)])action(item.$2,item.$3,(){Navigator.pop(b);if(item.$1=='sale'){recordSale(c,p);}else{transaction(c,item.$1,p);}}),action('Transfer existing stock here',Icons.move_down,(){Navigator.pop(b);transferStock(c,p);}),action('Edit product / prices',Icons.edit_outlined,(){Navigator.pop(b);editProduct(c,p);}),action('Remove / archive product',Icons.archive_outlined,(){Navigator.pop(b);removeProduct(c,p);})]))));
+  }
+  Future<void> stocktakeMode(BuildContext c) async {
+    await showModalBottomSheet<void>(context:c,isScrollControlled:true,showDragHandle:true,builder:(b)=>StatefulBuilder(builder:(b,refresh)=>SafeArea(child:SizedBox(height:MediaQuery.sizeOf(b).height*.84,child:Padding(padding:const EdgeInsets.all(20),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      Row(children:[Expanded(child:title('Stocktake mode')),IconButton(tooltip:'Start stocktake',icon:const Icon(Icons.add),onPressed:activeProducts(s).isEmpty?null:()=>perform(c,()async{await repo.save(startStocktake(s));},message:'Stocktake started. Count each product as you physically check it.'))]),
+      text('Count sellable and damaged cans separately. Sales and purchases stay in the ledger while you count; each product is compared with stock when its count is recorded.'),
+      FilledButton.icon(key:const ValueKey('start-stocktake'),onPressed:activeProducts(s).isEmpty?null:()=>perform(c,()async{await repo.save(startStocktake(s));},message:'Stocktake started.'),icon:const Icon(Icons.playlist_add_check),label:const Text('Start stocktake')),
+      const SizedBox(height:8),Expanded(child:ListView(children:[
+        if(stocktakeSessions(s).isEmpty)text('No stocktakes recorded yet.'),
+        for(final session in stocktakeSessions(s).reversed)...[
+          Builder(builder:(ctx){final products=objects(session['snapshotProducts']),counts=objects(session['counts']);final stateLabel=session['status']=='completed'?'Completed':'In progress';return Card(child:ListTile(title:Text('$stateLabel · ${displayDate(session['startedAt'])}'),subtitle:Text('${counts.length} of ${products.length} products counted'),trailing:TextButton(key:ValueKey('open-stocktake-${session['id']}'),onPressed:()=>stocktakeCounting(c,session['id'] as String),child:Text(session['status']=='completed'?'View':'Continue')));}),
+        ],
+      ])),
+    ]))))));
+  }
+  Future<void> stocktakeCounting(BuildContext c,String sessionId) async {
+    await showModalBottomSheet<void>(context:c,isScrollControlled:true,showDragHandle:true,builder:(b)=>StatefulBuilder(builder:(b,refresh){
+      final session=stocktakeSessions(s).firstWhere((x)=>x['id']==sessionId), preview=stocktakePreview(s,sessionId), complete=session['status']=='completed';
+      final counted=preview.where((x)=>x['counted']==true).length, ready=counted==preview.length&&preview.every((x)=>x['conflict']!=true);
+      Future<void> enterCount(Obj productSnapshot) async {
+        final productId=productSnapshot['productId'] as String;
+        // Freeze the expected balance before opening the editor. Any later
+        // movements remain newer ledger entries and are reconciled at review.
+        final eventCount=objects(s['events']).length, expected=accounts.book.stock(productId);
+        final sellable=TextEditingController(text:'$expected'),damaged=TextEditingController(text:'0');
+        final ok=await showDialog<bool>(context:b,builder:(d)=>AlertDialog(title:Text('Count ${productSnapshot['name']}'),content:SizedBox(width:380,child:Column(mainAxisSize:MainAxisSize.min,children:[Text('Expected sellable stock at this count: $expected'),TextField(controller:sellable,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Physically counted sellable units')),TextField(controller:damaged,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Physically counted damaged units'))])),actions:[TextButton(onPressed:()=>Navigator.pop(d,false),child:const Text('Cancel')),FilledButton(key:const ValueKey('save-stocktake-count'),onPressed:()=>Navigator.pop(d,true),child:const Text('Save count'))]));
+        if(ok==true){final sell=int.tryParse(sellable.text),bad=int.tryParse(damaged.text);if(sell==null||bad==null||sell<0||bad<0){ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content:Text('Enter whole, non-negative quantities.')));}else{await perform(c,()async{final next=recordStocktakeCount(s,sessionId,productId,sellable:sell,damaged:bad,eventCount:eventCount);await repo.save(next);},message:'Count saved.');refresh(()=>{});}}
+        sellable.dispose();damaged.dispose();
+      }
+      return SafeArea(child:SizedBox(height:MediaQuery.sizeOf(b).height*.88,child:Padding(padding:const EdgeInsets.all(20),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+        Row(children:[Expanded(child:title(complete?'Stocktake results':'Count products')),Text('$counted / ${preview.length}')]),
+        text('A discrepancy is not recorded as a sale. Damaged units are written off separately. Found stock has unknown purchase cost until corrected with a documented inventory receipt.'),
+        Expanded(child:ListView(children:[for(var i=0;i<preview.length;i++)Builder(builder:(ctx){final row=preview[i],snap=objects(session['snapshotProducts'])[i],label='${row['name']}${row['variant']==''?'':' · ${row['variant']}'}';if(row['counted']!=true)return Card(child:ListTile(title:Text(label),subtitle:Text('Snapshot at start: ${snap['expectedAtStart']} units'),trailing:TextButton(onPressed:complete?null:()=>enterCount(snap),child:const Text('Count'))));return Card(child:ListTile(title:Text(label),subtitle:Text('Expected at count ${row['expected']} · now ${row['current']}\nCounted sellable ${row['sellable']} + damaged ${row['damaged']} · variance ${row['variance']}\nProjected sellable after reconciliation ${row['projected']}'),isThreeLine:true,trailing:complete?const Icon(Icons.check_circle_outline):TextButton(onPressed:()=>enterCount(snap),child:const Text('Edit')));})])),
+        if(!complete&&counted==preview.length&&preview.any((x)=>x['conflict']==true))const Text('A newer sale consumed more stock than this count leaves available. Recount the affected item before confirming.',style:TextStyle(color:Colors.red)),
+        if(complete)OutlinedButton.icon(onPressed:()=>Navigator.pop(b),icon:const Icon(Icons.close),label:const Text('Close'))else FilledButton.icon(key:const ValueKey('confirm-stocktake'),onPressed:ready?()=>perform(c,()async{final yes=await showDialog<bool>(context:c,builder:(d)=>AlertDialog(title:const Text('Confirm stocktake adjustments?'),content:const Text('This saves permanent, auditable inventory adjustments. Missing and damaged units affect stock value and net profit, not sales revenue or sales-based product profit.'),actions:[TextButton(onPressed:()=>Navigator.pop(d,false),child:const Text('Review again')),FilledButton(onPressed:()=>Navigator.pop(d,true),child:const Text('Confirm adjustments'))]));if(yes==true)await repo.confirmStocktakeSession(sessionId);},message:'Stocktake adjustments saved.'):null,icon:const Icon(Icons.fact_check_outlined),label:const Text('Review and confirm')),
+      ]))));
+    }));
   }
   Future<void> purchaseLedger(BuildContext c) async {
     final grouped=purchaseHistory(s),groupedIds=grouped.expand((g)=>objects(g['lines']).map((line)=>line['eventId'])).toSet();

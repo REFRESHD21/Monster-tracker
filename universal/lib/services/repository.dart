@@ -9,6 +9,7 @@ import '../core/engine.dart';
 import '../core/legacy.dart';
 import '../core/products.dart';
 import '../core/purchases.dart';
+import '../core/stocktakes.dart';
 
 class Repository {
   final Database db; int revision=0; late Obj state;
@@ -54,6 +55,7 @@ class Repository {
   }
   Future<void> save(Obj candidate, {bool restoring=false}) async {
     validateProductChanges(state, candidate, restoring:restoring);
+    validateStocktakeChanges(state, candidate);
     validateState(candidate);final before=objects(state['events']),after=objects(candidate['events']);
     if(canonical(after.take(before.length).toList())!=canonical(before) || state['legacy']!=null && canonical(state['legacy'])!=canonical(candidate['legacy']))throw const FormatException('Historical records cannot be overwritten.');
     final text=canonical(candidate);if(utf8.encode(text).length>64*1024*1024)throw const FormatException('Data exceeds portable backup limit. Export and contact support.');
@@ -115,6 +117,11 @@ class Repository {
     }
     final next=clone(state);(next['events'] as List).addAll(entries);
     validateState(next);
+    await save(next);return true;
+  }
+  Future<bool> confirmStocktakeSession(String sessionId) async {
+    final next=confirmStocktake(state,sessionId);
+    if(canonical(next)==canonical(state))return false;
     await save(next);return true;
   }
   Future<void> restore(Obj incoming) async {final next=mergeBackup(state,incoming);if((next['businessId'] as String).isEmpty)next['businessId']=state['businessId'];await save(next,restoring:true);}
