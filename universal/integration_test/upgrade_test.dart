@@ -14,6 +14,12 @@ import 'package:business_tracker/services/backups.dart';
 void main(){
   final binding=IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   testWidgets('upgrade retains records and new universal saves survive restart', (tester) async {
+    Future<void> tapVisible(Finder target) async {
+      await tester.ensureVisible(target, alignment: .5);
+      await tester.pumpAndSettle();
+      await tester.tap(target);
+      await tester.pumpAndSettle();
+    }
     final repo=await Repository.open();
     final legacy=switch(const String.fromEnvironment('EXPECT_LEGACY',defaultValue:'true')){'true'=>true,_=>false};
     if(legacy){expect(repo.state['legacy'],isNotNull);expect(objects(repo.state['events']).length,4);expect(validateState(repo.state).book.stock(legacyProduct),25);expect(objects(repo.state['events'])[0]['date'],null);expect(objects(repo.state['events'])[2]['id'],'upgrade-restock-001');expect(objects(repo.state['events'])[3]['revenue'],777);final original=await openReadOnlyDatabase(path.join(await getDatabasesPath(),'monster-offline.db'));expect(Sqflite.firstIntValue(await original.rawQuery('PRAGMA user_version')),6);expect(Sqflite.firstIntValue(await original.rawQuery('SELECT COUNT(*) FROM events')),4);expect((await original.query('events',where:'id=?',whereArgs:['upgrade-sale-00001'])).single['revenue'],777);await original.close();}
@@ -33,10 +39,10 @@ void main(){
     await repo.save(configured);
     await tester.pumpWidget(TrackerApp(key:const ValueKey('fast-sales'),repository:repo));await tester.pumpAndSettle();
     await tester.tap(find.descendant(of:find.byType(NavigationBar),matching:find.text('Products')));await tester.pumpAndSettle();
-    await tester.ensureVisible(find.byKey(const ValueKey('product-options-device-product-001')));await tester.tap(find.byKey(const ValueKey('product-options-device-product-001')));await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Edit product / prices'));await tester.tap(find.text('Edit product / prices'));await tester.pumpAndSettle();
+    await tapVisible(find.byKey(const ValueKey('product-options-device-product-001')));
+    await tapVisible(find.text('Edit product / prices'));
     final dealField=find.byWidgetPredicate((w)=>w is TextField && w.decoration?.labelText=='Optional 2-item deal TOTAL (AUD; blank disables)');
-    await tester.ensureVisible(dealField);await tester.enterText(dealField,'9.00');
+    await tester.ensureVisible(dealField, alignment: .5);await tester.pumpAndSettle();await tester.enterText(dealField,'9.00');
     await tester.tap(find.text('Save product'));await tester.pumpAndSettle();
     expect(objects(repo.state['products']).firstWhere((p)=>p['id']=='device-product-001')['twoItemPrice'],900);
     final historyBefore=objects(repo.state['events']).length;
@@ -57,20 +63,20 @@ void main(){
     await tester.tap(find.text('Cancel'));await tester.pumpAndSettle();
     // Exercise the removal dialogs, including stock blockers and true deletion.
     expect(productRemoval(repo.state,'device-product-001').canArchive,false);
-    await tester.ensureVisible(find.byKey(const ValueKey('product-options-device-product-001')));await tester.tap(find.byKey(const ValueKey('product-options-device-product-001')));await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Remove / archive product'));await tester.tap(find.text('Remove / archive product'));await tester.pumpAndSettle();
+    await tapVisible(find.byKey(const ValueKey('product-options-device-product-001')));
+    await tapVisible(find.text('Remove / archive product'));
     expect(find.textContaining('3 units remain'),findsOneWidget);expect(find.widgetWithText(FilledButton,'Archive product'),findsNothing);
     await tester.tap(find.text('Cancel'));await tester.pumpAndSettle();
     await repo.append(event(id:'remaining-loss-001',type:'damaged',quantity:3,productId:'device-product-001',note:'Device removal fixture'));
     final beforeArchive=validateState(repo.state).summary();
-    await tester.tap(find.byKey(const ValueKey('product-options-device-product-001')));await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Remove / archive product'));await tester.tap(find.text('Remove / archive product'));await tester.pumpAndSettle();
+    await tapVisible(find.byKey(const ValueKey('product-options-device-product-001')));
+    await tapVisible(find.text('Remove / archive product'));
     await tester.tap(find.widgetWithText(FilledButton,'Archive product'));await tester.pumpAndSettle();
     expect(validateState(repo.state).summary(),beforeArchive);expect(find.text('Skincare cream · 50 ml'),findsNothing);
-    await tester.ensureVisible(find.byKey(const ValueKey('product-options-unused-product-001')));await tester.tap(find.byKey(const ValueKey('product-options-unused-product-001')));await tester.pumpAndSettle();
-    await tester.ensureVisible(find.text('Remove / archive product'));await tester.tap(find.text('Remove / archive product'));await tester.pumpAndSettle();
+    await tapVisible(find.byKey(const ValueKey('product-options-unused-product-001')));
+    await tapVisible(find.text('Remove / archive product'));
     await tester.tap(find.text('Delete permanently'));await tester.pumpAndSettle();expect(objects(repo.state['products']).any((p)=>p['id']=='unused-product-001'),false);
-    await tester.tap(find.text('Archived products'));await tester.pumpAndSettle();expect(find.text('Skincare cream · 50 ml'),findsOneWidget);
+    await tapVisible(find.text('Archived products'));expect(find.text('Skincare cream · 50 ml'),findsOneWidget);
     await binding.takeScreenshot('${legacy?'upgrade':'empty'}-archived-products');
     await tester.tap(find.text('Restore'));await tester.pumpAndSettle();expect(isArchived(objects(repo.state['products']).firstWhere((p)=>p['id']=='device-product-001')),false);
     final archivedAgain=clone(repo.state);objects(archivedAgain['products']).firstWhere((p)=>p['id']=='device-product-001')['archived']=true;await repo.save(archivedAgain);
