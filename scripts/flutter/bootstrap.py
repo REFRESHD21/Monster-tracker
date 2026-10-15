@@ -41,6 +41,12 @@ gradle.write_text(s)
 info=u/'ios/Runner/Info.plist'
 with info.open('rb') as f:p=plistlib.load(f)
 p.update(CFBundleDisplayName='Business Tracker',NSCameraUsageDescription='Take product and receipt photos or scan product barcodes.',NSPhotoLibraryUsageDescription='Choose product and receipt photos.',NSPhotoLibraryAddUsageDescription='Save exported receipt photos.',UIBackgroundModes=['fetch','processing'],BGTaskSchedulerPermittedIdentifiers=['au.monster.tracker.plus.sync','au.monster.tracker.plus.backup'])
+# Public OAuth client IDs only; never a client secret. Empty builds keep setup disabled.
+import os
+client=os.environ.get('GOOGLE_IOS_CLIENT_ID','')
+if client:
+    p['GIDClientID']=client
+    p['CFBundleURLTypes']=[{'CFBundleURLSchemes':['.'.join(reversed(client.split('.')))]}]
 with info.open('wb') as f:plistlib.dump(p,f)
 pbx=u/'ios/Runner.xcodeproj/project.pbxproj';s=pbx.read_text().replace('au.monster.tracker.businessTracker','au.monster.tracker.plus').replace('IPHONEOS_DEPLOYMENT_TARGET = 13.0','IPHONEOS_DEPLOYMENT_TARGET = 15.5');pbx.write_text(s)
 pod=u/'ios/Podfile'

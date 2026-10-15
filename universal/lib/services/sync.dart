@@ -7,6 +7,8 @@ import 'package:sqflite/sqflite.dart';
 import '../core/codec.dart';
 import 'repository.dart';
 import 'backups.dart';
+import 'google_sheets.dart';
+import 'package:uuid/uuid.dart';
 const secrets=FlutterSecureStorage(iOptions:IOSOptions(accessibility:KeychainAccessibility.first_unlock));
 List<Obj> syncRecords(Obj state) {
   final out=<Obj>[];
@@ -29,11 +31,45 @@ class Sheets {
   static Future<void> configure(String url,String token,bool automatic) async {
     final u=Uri.tryParse(url.trim());
     if(u==null || u.scheme!='https' || u.host!='script.google.com' || u.hasPort || u.userInfo.isNotEmpty || u.hasQuery || u.hasFragment || !RegExp(r'^/macros/s/[A-Za-z0-9_-]+/exec$').hasMatch(u.path) || token.length<32)throw const FormatException('Enter a deployed Apps Script /exec URL and a token of at least 32 characters.');
-    await secrets.write(key:'sheets-url',value:url.trim());await secrets.write(key:'sheets-token',value:token);await secrets.write(key:'sheets-auto',value:'$automatic');
+    await secrets.write(key:'sheets-mode',value:'script');await secrets.write(key:'sheets-url',value:url.trim());await secrets.write(key:'sheets-token',value:token);await secrets.write(key:'sheets-auto',value:'$automatic');
     if(automatic) {await Workmanager().registerPeriodicTask('au.monster.tracker.plus.sync','au.monster.tracker.plus.sync',frequency:const Duration(minutes:15),constraints:Constraints(networkType:NetworkType.connected));}
     else {await Workmanager().cancelByUniqueName('au.monster.tracker.plus.sync');}
   }
-  static Future<void> upload(Obj state,{bool force=false}) async {
+  static Future<void> automaticUploads(bool enabled) async {
+    await secrets.write(key:'sheets-auto',value:'$enabled');
+    if(enabled){await Workmanager().registerPeriodicTask('au.monster.tracker.plus.sync','au.monster.tracker.plus.sync',frequency:const Duration(minutes:15),constraints:Constraints(networkType:NetworkType.connected));}
+    else{await Workmanager().cancelByUniqueName('au.monster.tracker.plus.sync');}
+  }
+  static Future<T> exclusive<T>(Future<T> Function(Repository) fn) async {
+    final repo=await Repository.open(migrate:false),owner=const Uuid().v4();
+    var acquired=false;
+    try {
+      acquired=await repo.db.transaction((txn) async {
+        final now=DateTime.now().millisecondsSinceEpoch;
+        await txn.delete('task_lock',where:'expires<?',whereArgs:[now]);
+        if((await txn.query('task_lock',where:'name=?',whereArgs:['sheets'])).isNotEmpty)return false;
+        await txn.insert('task_lock',{'name':'sheets','owner':owner,'expires':now+3600000});return true;
+      });
+      if(!acquired)throw const FormatException('An upload or connection change is already in progress. Retry shortly.');
+      return await fn(repo);
+    }finally{
+      if(acquired)await repo.db.delete('task_lock',where:'name=? AND owner=?',whereArgs:['sheets',owner]);
+      await repo.close();
+    }
+  }
+  static Future<void> disconnect() async {
+    await automaticUploads(false);
+    await exclusive((_)=>GoogleSheets.disconnect());
+  }
+  static Future<void> upload(Obj state,{bool force=false})=>exclusive((repo) async {
+    // Re-read under the lock: a scheduled task may have captured an older revision.
+    try {
+      if(await secrets.read(key:'sheets-mode')=='google'){await GoogleSheets.upload(repo.state);}
+      else{await _scriptUpload(repo.state,force:force);}
+    }catch(e){await secrets.write(key:'sheets-error',value:'$e');rethrow;}
+  });
+  static Future<void> _scriptUpload(Obj state,{bool force=false}) async {
+
     final url=await secrets.read(key:'sheets-url'), token=await secrets.read(key:'sheets-token');
     if(url==null || token==null)throw const FormatException('Configure Google Sheets first.');
     final repo=await Repository.open(migrate:false);

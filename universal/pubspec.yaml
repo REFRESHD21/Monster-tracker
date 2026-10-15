@@ -1,7 +1,7 @@
 name: business_tracker
 description: Offline business inventory, sales and receipts for Android and iOS.
 publish_to: none
-version: 2.0.1+12
+version: 2.1.0+13
 environment:
   sdk: '>=3.8.0 <4.0.0'
 dependencies:
@@ -24,6 +24,8 @@ dependencies:
   workmanager_platform_interface: 0.9.1+1
   google_mlkit_text_recognition: ^0.15.0
   uuid: ^4.5.1
+  google_sign_in: 6.3.0
+  url_launcher: ^6.3.2
 dev_dependencies:
   flutter_test:
     sdk: flutter
