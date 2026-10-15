@@ -29,10 +29,16 @@ void main(){
     expect(validateState(repo.state).book.stock('device-product-001'),6);
     // Exercise the compact sale UI against the upgraded SQLite repository.
     final configured=clone(repo.state);
-    objects(configured['products']).firstWhere((p)=>p['id']=='device-product-001')['twoItemPrice']=900;
     (configured['products'] as List).add({'id':'unused-product-001','name':'Unused flavour','category':'Drinks','variant':'','purchaseCost':0,'sellingPrice':300,'minimum':0,'barcode':'','photo':null});
     await repo.save(configured);
     await tester.pumpWidget(TrackerApp(key:const ValueKey('fast-sales'),repository:repo));await tester.pumpAndSettle();
+    await tester.tap(find.text('Products'));await tester.pumpAndSettle();
+    await tester.ensureVisible(find.byKey(const ValueKey('product-options-device-product-001')));await tester.tap(find.byKey(const ValueKey('product-options-device-product-001')));await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Edit product / prices'));await tester.tap(find.text('Edit product / prices'));await tester.pumpAndSettle();
+    final dealField=find.byWidgetPredicate((w)=>w is TextField && w.decoration?.labelText=='Optional 2-item deal TOTAL (AUD; blank disables)');
+    await tester.ensureVisible(dealField);await tester.enterText(dealField,'9.00');
+    await tester.tap(find.text('Save product'));await tester.pumpAndSettle();
+    expect(objects(repo.state['products']).firstWhere((p)=>p['id']=='device-product-001')['twoItemPrice'],900);
     final historyBefore=objects(repo.state['events']).length;
     await tester.tap(find.byKey(const ValueKey('record-sale')));await tester.pumpAndSettle();
     await tester.tap(find.text('Skincare cream · 50 ml'));await tester.pumpAndSettle();
@@ -49,14 +55,21 @@ void main(){
     await tester.tap(find.byKey(const ValueKey('record-sale')));await tester.pumpAndSettle();await tester.tap(find.text('Skincare cream · 50 ml'));await tester.pumpAndSettle();
     expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip,'Card / bank')).selected,true);
     await tester.tap(find.text('Cancel'));await tester.pumpAndSettle();
-    // Removal with stock is blocked and explained; no event history is deleted.
+    // Exercise the removal dialogs, including stock blockers and true deletion.
     expect(productRemoval(repo.state,'device-product-001').canArchive,false);
+    await tester.ensureVisible(find.byKey(const ValueKey('product-options-device-product-001')));await tester.tap(find.byKey(const ValueKey('product-options-device-product-001')));await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Remove / archive product'));await tester.tap(find.text('Remove / archive product'));await tester.pumpAndSettle();
+    expect(find.textContaining('3 units remain'),findsOneWidget);expect(find.widgetWithText(FilledButton,'Archive product'),findsNothing);
+    await tester.tap(find.text('Cancel'));await tester.pumpAndSettle();
     await repo.append(event(id:'remaining-loss-001',type:'damaged',quantity:3,productId:'device-product-001',note:'Device removal fixture'));
-    final ready=clone(repo.state);ready['products']=objects(ready['products']).map((p)=>p['id']=='device-product-001'?{...p,'archived':true}:p).toList();
-    final beforeArchive=validateState(repo.state).summary();await repo.save(ready);expect(validateState(repo.state).summary(),beforeArchive);
-    final unusedRemoved=clone(repo.state);(unusedRemoved['products'] as List).removeWhere((p)=>p['id']=='unused-product-001');await repo.save(unusedRemoved);
-    await tester.pumpWidget(TrackerApp(key:const ValueKey('archived-view'),repository:repo));await tester.pumpAndSettle();
-    await tester.tap(find.text('Products'));await tester.pumpAndSettle();expect(find.text('Skincare cream · 50 ml'),findsNothing);
+    final beforeArchive=validateState(repo.state).summary();
+    await tester.tap(find.byKey(const ValueKey('product-options-device-product-001')));await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Remove / archive product'));await tester.tap(find.text('Remove / archive product'));await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton,'Archive product'));await tester.pumpAndSettle();
+    expect(validateState(repo.state).summary(),beforeArchive);expect(find.text('Skincare cream · 50 ml'),findsNothing);
+    await tester.ensureVisible(find.byKey(const ValueKey('product-options-unused-product-001')));await tester.tap(find.byKey(const ValueKey('product-options-unused-product-001')));await tester.pumpAndSettle();
+    await tester.ensureVisible(find.text('Remove / archive product'));await tester.tap(find.text('Remove / archive product'));await tester.pumpAndSettle();
+    await tester.tap(find.text('Delete permanently'));await tester.pumpAndSettle();expect(objects(repo.state['products']).any((p)=>p['id']=='unused-product-001'),false);
     await tester.tap(find.text('Archived products'));await tester.pumpAndSettle();expect(find.text('Skincare cream · 50 ml'),findsOneWidget);
     await binding.takeScreenshot('${legacy?'upgrade':'empty'}-archived-products');
     await tester.tap(find.text('Restore'));await tester.pumpAndSettle();expect(isArchived(objects(repo.state['products']).firstWhere((p)=>p['id']=='device-product-001')),false);

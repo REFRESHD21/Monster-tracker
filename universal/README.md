@@ -65,7 +65,7 @@ The cache is compatibility infrastructure, not an owned production release key.
 
 ## Migration and records
 
-- The Android package remains **au.monster.tracker.plus**; versionCode is **11**.
+- The Android package remains **au.monster.tracker.plus**; versionCode is **12**.
 - On first launch, an existing `monster-offline.db` is exported through the original
   Java validators. A pending payment checkout blocks migration rather than losing
   a reserved or potentially paid sale. Resolve such checkouts in 1.6.3 before updating.
