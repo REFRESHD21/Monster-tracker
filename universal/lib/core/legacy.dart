@@ -87,7 +87,7 @@ Obj decodeBackup(String text) {
 String encodeBackup(Obj state) {validateState(state);final root=<String,dynamic>{'format':'business-tracker-backup','version':1,'state':state};root['sha256']=digest(root);final text=canonical(root);if(utf8.encode(text).length>64*1024*1024)throw const FormatException('Backup exceeds 64 MB. Nothing exported.');return text;}
 Obj mergeBackup(Obj current, Obj incoming) {
   validateState(current);validateState(incoming);
-  if(objects(current['events']).isEmpty && objects(current['products']).isEmpty)return clone(incoming);
+  if(objects(current['events']).isEmpty && objects(current['products']).isEmpty && stocktakeSessions(current).isEmpty)return clone(incoming);
   if(canonical(current)==canonical(incoming))return clone(current);
   if(incoming['businessId']=='' && current['legacy']!=null && incoming['legacy']!=null){final a=clone(obj(current['legacy']))..remove('sha256')..remove('exportedAt'),b=clone(obj(incoming['legacy']))..remove('sha256')..remove('exportedAt');if(canonical(a)==canonical(b)){if(canonical(objects(current['events']).take(objects(incoming['events']).length).toList())!=canonical(incoming['events']))throw const FormatException('Conflicting migrated transaction.');return clone(current);}}
   final old=objects(current['events']), next=objects(incoming['events']);

@@ -66,6 +66,14 @@ void main() {
     final edited=clone(first);stocktakeSessions(edited).single['completedAt']=1780000004000;
     expect(()=>validateStocktakeChanges(first,edited),throwsFormatException);
   });
+
+  test('legacy backups without stocktake data decode and same-business restore retains new stocktake history', () {
+    final original=fixture()..['events']=[event(id:'stocktake-lot-0001',type:'restock',quantity:4,productId:'drink-cola-001',cost:1000)];
+    final oldFormat=clone(original)..remove('stocktakes');
+    expect(stocktakeSessions(decodeBackup(encodeBackup(oldFormat))),isEmpty);
+    final backup=clone(original),current=startStocktake(original,id:'stocktake-restore-01',at:1780000000000);
+    expect(mergeBackup(current,backup)['stocktakes'],current['stocktakes']);
+  });
 }
 
 int _next=0;
