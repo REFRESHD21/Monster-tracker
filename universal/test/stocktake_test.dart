@@ -15,7 +15,7 @@ void main() {
     final accounts=validateState(saved);
     expect(accounts.book.stock('drink-cola-001'),7);
     expect(accounts.summary()['revenue'],0);expect(accounts.salesProfit(objects(saved['products']))['profit'],0);
-    expect(accounts.summary()['losses'],750);expect(accounts.summary()['purchases'],0);
+    expect(accounts.summary()['losses'],750);expect(accounts.summary()['purchases'],2500);
     final session=stocktakeSessions(saved).single;
     expect(session['status'],'completed');expect(session['adjustmentEventIds'],hasLength(2));
     expect(objects(saved['events']).where((e)=>e['stocktakeSessionId']=='stocktake-session-01').map((e)=>e['type']).toList(),['missing','damaged']);

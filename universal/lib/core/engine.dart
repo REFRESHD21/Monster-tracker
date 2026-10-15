@@ -229,7 +229,7 @@ void validateStocktakeChanges(Obj before, Obj after) {
     if (current == null) throw const FormatException('Stocktake history cannot be deleted.');
     if (prior['status'] == 'completed' && canonical(prior) != canonical(current)) throw const FormatException('Completed stocktake history cannot be edited.');
     if (prior['status'] == 'counting') {
-      for (final key in ['id', 'status', 'startedAt', 'snapshotProducts']) {
+      for (final key in ['id', 'startedAt', 'snapshotProducts']) {
         if (canonical(prior[key]) != canonical(current[key])) throw const FormatException('Stocktake identity and starting snapshot cannot be changed.');
       }
     }
