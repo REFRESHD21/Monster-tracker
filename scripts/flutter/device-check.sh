@@ -19,14 +19,14 @@ wait_for_ui() {
 # Retry only before the test body starts; never replay a partially executed test.
 drive_checked() {
   local scenario="$1" legacy="$2" attempt status log
-  for attempt in 1 2; do
+  for attempt in 1 2 3; do
     log="device-evidence/drive-$scenario-$attempt.log"
     set +e
     timeout 8m flutter drive --no-dds --keep-app-running --driver=test_driver/integration_test.dart --target=integration_test/upgrade_test.dart --dart-define-from-file=config/google-oauth.json --dart-define="EXPECT_LEGACY=$legacy" 2>&1 | tee "$log"
     status=${PIPESTATUS[0]}
     set -e
     if [ "$status" -eq 0 ]; then return 0; fi
-    if [ "$attempt" -eq 2 ] || ! grep -Fq 'Service connection disposed' "$log" || grep -Eq 'I/flutter.*upgrade retains records|EXCEPTION CAUGHT|Test failed|Some tests failed' "$log"; then
+    if [ "$attempt" -eq 3 ] || ! grep -Fq 'Service connection disposed' "$log" || grep -Eq 'I/flutter.*upgrade retains records|EXCEPTION CAUGHT|Test failed|Some tests failed' "$log"; then
       return "$status"
     fi
     echo "Retrying $scenario attachment after a pre-test transport disconnect; keeping installed data."
