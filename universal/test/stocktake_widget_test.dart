@@ -32,7 +32,7 @@ void main() {
         final id=objects(repo.state['stocktakes']).single['id'] as String;
         await tester.tap(find.byKey(ValueKey('open-stocktake-$id')));await tester.pumpAndSettle();
         await tester.tap(find.text('Count'));await tester.pumpAndSettle();
-        final fields=find.byType(TextField);await tester.enterText(fields.at(0),'3');await tester.enterText(fields.at(1),'1');
+        final fields=find.descendant(of:find.byType(AlertDialog),matching:find.byType(TextField));await tester.enterText(fields.at(0),'3');await tester.enterText(fields.at(1),'1');
         await tester.tap(find.byKey(const ValueKey('save-stocktake-count')));await tester.pumpAndSettle();
         expect(objects(repo.state['stocktakes']).single['counts'],hasLength(1));
         expect(tester.widget<FilledButton>(find.byKey(const ValueKey('confirm-stocktake'))).onPressed,isNotNull);
