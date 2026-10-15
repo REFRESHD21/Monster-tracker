@@ -63,6 +63,9 @@ Future<void> exerciseProductFlow(WidgetTester tester, Repository repo,
     await tapVisible(find.byKey(const ValueKey('product-options-unused-product-001')));
     await tapVisible(find.text('Remove / archive product'));
     await tester.tap(find.text('Delete permanently'));await tester.pumpAndSettle();expect(objects(repo.state['products']).any((p)=>p['id']=='unused-product-001'),false);
+    // The archive toggle is above the product cards; return the list to its
+    // start before asking scrollUntilVisible to reveal that header control.
+    await tester.drag(find.byType(Scrollable).first,const Offset(0,1000));await tester.pumpAndSettle();
     await tapVisible(find.text('Archived products'));expect(find.text('Skincare cream · 50 ml'),findsOneWidget);
     await screenshot('archived-products');
     await tapVisible(find.text('Restore'));expect(isArchived(objects(repo.state['products']).firstWhere((p)=>p['id']=='device-product-001')),false);
