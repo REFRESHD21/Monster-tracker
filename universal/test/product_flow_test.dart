@@ -14,7 +14,7 @@ void main(){
     addTearDown(tester.view.resetPhysicalSize);addTearDown(tester.view.resetDevicePixelRatio);
     FlutterSecureStorage.setMockInitialValues({});
     await tester.runAsync(() async {
-      sqfliteFfiInit();databaseFactory=databaseFactoryFfi;
+      sqfliteFfiInit();databaseFactory=databaseFactoryFfiNoIsolate;
       final folder=await Directory.systemTemp.createTemp('tracker-ui-');
       await databaseFactory.setDatabasesPath(folder.path);
       final repo=await Repository.open();
