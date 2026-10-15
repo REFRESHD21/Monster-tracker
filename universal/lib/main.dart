@@ -50,7 +50,7 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
   Future<void> perform(BuildContext c,Future<void> Function() fn,{String message='Saved. Historical records retained.'}) async {
     if(busy)return;setState(()=>busy=true);
     try {await fn();if(mounted){setState((){});ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text(message)));}}
-    catch(e){if(c.mounted)await showDialog<void>(context:c,builder:(c)=>AlertDialog(title:const Text('No changes saved'),content:Text('$e'),actions:[TextButton(onPressed:()=>Navigator.pop(c),child:const Text('Close'))]));}
+    catch(e){if(c.mounted)await showDialog<void>(context:c,builder:(c)=>AlertDialog(title:const Text('Action incomplete · local records retained'),content:Text('$e'),actions:[TextButton(onPressed:()=>Navigator.pop(c),child:const Text('Close'))]));}
     finally {if(mounted){setState(()=>busy=false);unawaited(automatic());}}
   }
   ThemeData theme() {

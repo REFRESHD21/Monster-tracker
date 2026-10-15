@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -28,13 +29,13 @@ List<Obj> syncRecords(Obj state) {
   return out;
 }
 class Sheets {
-  static Future<void> configure(String url,String token,bool automatic) async {
+  static Future<void> configure(String url,String token,bool automatic)=>exclusive((_) async {
     final u=Uri.tryParse(url.trim());
     if(u==null || u.scheme!='https' || u.host!='script.google.com' || u.hasPort || u.userInfo.isNotEmpty || u.hasQuery || u.hasFragment || !RegExp(r'^/macros/s/[A-Za-z0-9_-]+/exec$').hasMatch(u.path) || token.length<32)throw const FormatException('Enter a deployed Apps Script /exec URL and a token of at least 32 characters.');
     await secrets.write(key:'sheets-mode',value:'script');await secrets.write(key:'sheets-url',value:url.trim());await secrets.write(key:'sheets-token',value:token);await secrets.write(key:'sheets-auto',value:'$automatic');
-    if(automatic) {await Workmanager().registerPeriodicTask('au.monster.tracker.plus.sync','au.monster.tracker.plus.sync',frequency:const Duration(minutes:15),constraints:Constraints(networkType:NetworkType.connected));}
-    else {await Workmanager().cancelByUniqueName('au.monster.tracker.plus.sync');}
-  }
+    for(final key in ['sheets-google-id','sheets-account','sheets-email','sheets-snapshot','sheets-last','sheets-error']){await secrets.delete(key:key);}
+    await automaticUploads(automatic);
+  });
   static Future<void> automaticUploads(bool enabled) async {
     await secrets.write(key:'sheets-auto',value:'$enabled');
     if(enabled){await Workmanager().registerPeriodicTask('au.monster.tracker.plus.sync','au.monster.tracker.plus.sync',frequency:const Duration(minutes:15),constraints:Constraints(networkType:NetworkType.connected));}
@@ -54,18 +55,20 @@ class Sheets {
   }
   static Future<T> exclusive<T>(Future<T> Function(Repository) fn) async {
     final repo=await Repository.open(migrate:false),owner=const Uuid().v4();
-    var acquired=false;
+    var acquired=false;Timer? heartbeat;
     try {
       acquired=await repo.db.transaction((txn) async {
         final now=DateTime.now().millisecondsSinceEpoch;
         await txn.delete('task_lock',where:'expires<?',whereArgs:[now]);
         if((await txn.query('task_lock',where:'name=?',whereArgs:['sheets'])).isNotEmpty)return false;
-        await txn.insert('task_lock',{'name':'sheets','owner':owner,'expires':now+3600000});return true;
+        await txn.insert('task_lock',{'name':'sheets','owner':owner,'expires':now+300000});return true;
       });
-      if(!acquired)throw const FormatException('An upload or connection change is already in progress. Retry shortly.');
+      if(!acquired)throw const FormatException('An upload or connection change is already in progress. Retry shortly; an interrupted job releases within five minutes.');
+      heartbeat=Timer.periodic(const Duration(minutes:1),(_)async{try{await repo.db.update('task_lock',{'expires':DateTime.now().millisecondsSinceEpoch+300000},where:'name=? AND owner=?',whereArgs:['sheets',owner]);}catch(_){/* Upload outcome remains pending if the worker stops. */}});
       await _identity(repo);
       return await fn(repo);
     }finally{
+      heartbeat?.cancel();
       if(acquired)await repo.db.delete('task_lock',where:'name=? AND owner=?',whereArgs:['sheets',owner]);
       await repo.close();
     }

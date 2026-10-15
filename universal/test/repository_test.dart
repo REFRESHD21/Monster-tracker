@@ -11,7 +11,7 @@ import 'package:business_tracker/services/sync.dart';
 void main(){
   TestWidgetsFlutterBinding.ensureInitialized();
   late Directory folder;
-  setUp(()async{sqfliteFfiInit();databaseFactory=databaseFactoryFfi;folder=await Directory.systemTemp.createTemp('tracker-test-');await setDatabasesPath(folder.path);FlutterSecureStorage.setMockInitialValues({});});
+  setUp(()async{sqfliteFfiInit();databaseFactory=databaseFactoryFfi;folder=await Directory.systemTemp.createTemp('tracker-test-');await databaseFactory.setDatabasesPath(folder.path);FlutterSecureStorage.setMockInitialValues({});});
   tearDown(()async{await folder.delete(recursive:true);});
   test('same sale confirmation is durable and deduplicated across repository reopen',()async{
     var r=await Repository.open();final s=clone(r.state);s['products']=[{'id':'repo-product-001','name':'Drink','category':'','variant':'','sellingPrice':350,'purchaseCost':100,'minimum':0,'barcode':'','photo':null}];await r.save(s);
@@ -24,7 +24,7 @@ void main(){
   test('fresh database clears surviving keychain connection; restore has independent identity',()async{
     FlutterSecureStorage.setMockInitialValues({'sheets-google-id':'old-sheet','sheets-account':'old-account','sheets-mode':'google','sheets-auto':'true','sheets-local-identity':'previous-install'});
     final r=await Repository.open();final first=(await r.db.query('local_identity')).single['id'];await Sheets.initializeConnection();expect(await secrets.read(key:'sheets-google-id'),null);expect(await secrets.read(key:'sheets-auto'),null);final backup=clone(r.state);await r.close();
-    final other=await Directory('${folder.path}/second-install').create();await setDatabasesPath(other.path);final second=await Repository.open();await second.restore(backup);final id=(await second.db.query('local_identity')).single['id'];expect(id,isNot(first));expect(second.state['businessId'],backup['businessId']);await Sheets.initializeConnection();expect(await secrets.read(key:'sheets-local-identity'),id);await second.close();
+    final other=await Directory('${folder.path}/second-install').create();await databaseFactory.setDatabasesPath(other.path);final second=await Repository.open();await second.restore(backup);final id=(await second.db.query('local_identity')).single['id'];expect(id,isNot(first));expect(second.state['businessId'],backup['businessId']);await Sheets.initializeConnection();expect(await secrets.read(key:'sheets-local-identity'),id);await second.close();
   });
   test('v3 in-place schema upgrade retains advanced connection and history',()async{
     final r=await Repository.open();final before=canonical(r.state);

@@ -53,8 +53,8 @@ required at build time. **Do not supply or embed an OAuth client secret.**
 
 ## Data and retry contract
 
-- The SDK owns account tokens. Connection/account metadata and the random
-  installation ID use platform secure storage. None enters the portable backup.
+- The SDK owns account tokens. Connection/account metadata uses platform secure storage. A random local
+  installation ID lives separately in SQLite. Neither enters the portable backup.
   Each newly initialized installation chooses its own connection and tabs even
   when restoring the same business backup. Disconnect signs out, disables jobs
   and clears connection metadata while retaining local records and remote files.
