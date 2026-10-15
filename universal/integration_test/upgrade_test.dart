@@ -32,7 +32,7 @@ void main(){
     (configured['products'] as List).add({'id':'unused-product-001','name':'Unused flavour','category':'Drinks','variant':'','purchaseCost':0,'sellingPrice':300,'minimum':0,'barcode':'','photo':null});
     await repo.save(configured);
     await tester.pumpWidget(TrackerApp(key:const ValueKey('fast-sales'),repository:repo));await tester.pumpAndSettle();
-    await tester.tap(find.text('Products'));await tester.pumpAndSettle();
+    await tester.tap(find.descendant(of:find.byType(NavigationBar),matching:find.text('Products')));await tester.pumpAndSettle();
     await tester.ensureVisible(find.byKey(const ValueKey('product-options-device-product-001')));await tester.tap(find.byKey(const ValueKey('product-options-device-product-001')));await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('Edit product / prices'));await tester.tap(find.text('Edit product / prices'));await tester.pumpAndSettle();
     final dealField=find.byWidgetPredicate((w)=>w is TextField && w.decoration?.labelText=='Optional 2-item deal TOTAL (AUD; blank disables)');

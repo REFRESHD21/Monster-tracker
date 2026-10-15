@@ -1,4 +1,4 @@
-## 2.0.1: faster sales and safe product removal
+## Faster sales and safe product removal (included in 2.1.0)
 
 Record sale is available above the bottom navigation on every screen. Tap a
 product in the active Products list (or choose one from Record sale), select
@@ -24,9 +24,9 @@ a historical return. History, names, reports, receipts and FIFO costs remain.
 Archive/deal settings and the last payment method are included in full backups.
 Older 2.0.0 backups remain readable; their missing settings mean active/no deal.
 
-The Android version is **2.0.1 (12)** with the same package and existing signing
+The Android version is **2.1.0 (13)** with the same package and existing signing
 certificate. CI opens the actual shipped 2.0.0 release on populated records,
-then installs 2.0.1 over it without uninstalling. Physical-device checks and
+then installs 2.1.0 over it without uninstalling. Physical-device checks and
 live Sheets setup remain as described below. No payment-provider integration
 or store publication is part of this update.
 
@@ -65,7 +65,7 @@ The cache is compatibility infrastructure, not an owned production release key.
 
 ## Migration and records
 
-- The Android package remains **au.monster.tracker.plus**; versionCode is **12**.
+- The Android package remains **au.monster.tracker.plus**; versionCode is **13**.
 - On first launch, an existing `monster-offline.db` is exported through the original
   Java validators. A pending payment checkout blocks migration rather than losing
   a reserved or potentially paid sale. Resolve such checkouts in 1.6.3 before updating.
