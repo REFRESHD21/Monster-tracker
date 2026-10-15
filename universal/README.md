@@ -35,8 +35,30 @@ a historical return. History, names, reports, receipts and FIFO costs remain.
 Archive/deal settings and the last payment method are included in full backups.
 Older 2.0.0 backups remain readable; their missing settings mean active/no deal.
 
+## Sales & product profit
+
+The Home overview separates actual sales-based product results from estimates
+for current stock. Reports support Today, week, month, quarter, year, financial
+year, all history and a custom Perth date range. Product rows can be sorted by
+revenue, product profit, units sold or estimated future revenue. Sales profit
+uses actual recorded transaction revenue after refunds and the existing FIFO
+COGS rows; it does not subtract fees, expenses or damaged/missing stock losses.
+Future inventory estimates use each product's current selling price and the
+remaining FIFO lots. Unknown dates stay out of bounded date ranges.
+
+The ledger stores costs as integer cents and treats a zero-cost remaining lot as
+incomplete when estimating future profit. This is conservative: genuinely free
+stock is also flagged because the current records do not distinguish a free
+purchase from an unrecorded cost. A product with no configured positive selling
+price is likewise shown as incomplete while stock remains. Physical returns
+follow the existing behavior and re-enter FIFO sellable stock; the current data
+model does not label returned goods as damaged, so mark damaged returns with the
+existing damaged-stock adjustment immediately after receiving them. The app
+does not infer an inventory return from a money refund. Record the refund and
+physical return separately as the existing history requires.
+
 The Android version is **2.1.2 (15)** with the same package and existing signing
-certificate. CI opens the actual shipped 2.1.1 release on populated records,
+certificate. CI opens the actual shipped 2.1.0 release on populated records,
 then installs 2.1.2 over it without uninstalling. Physical-device checks and
 live Sheets setup remain as described below. No payment-provider integration
 or store publication is part of this update.

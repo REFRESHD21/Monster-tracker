@@ -54,6 +54,12 @@ void main() {
     final s=emptyState();s['products']=[product()..['sellingPrice']=350];s['events']=[event(id:'no-sale-stock-001',type:'restock',quantity:2,productId:'product-test-001',cost:0)];
     final p=validateState(s).salesProfit(objects(s['products']));expect(p['revenue'],0);expect(p['profit'],0);expect(p['futureRevenue'],700);expect(p['futureProfit'],isNull);expect(p['totalProfit'],isNull);expect(p['unknownCostUnits'],2);expect(objects(p['products']).single['unitsSold'],0);
   });
+  test('full refund reverses recorded revenue and discounts remain actual; future uses current price',(){
+    final products=[product()..['sellingPrice']=300];
+    final events=[event(id:'refund-stock-0001',type:'restock',quantity:2,productId:'product-test-001',cost:200),event(id:'refund-sale-00001',type:'sale',quantity:1,productId:'product-test-001',revenue:180,payment:'cash'),event(id:'refund-part-00001',type:'refund',target:'refund-sale-00001',revenue:80),event(id:'refund-part-00002',type:'refund',target:'refund-sale-00001',revenue:100)];
+    final a=calculate(events),first=a.salesProfit(products);expect(first['revenue'],0);expect(first['profit'],-100);expect(first['futureRevenue'],300);
+    products.single['sellingPrice']=450;final updated=a.salesProfit(products);expect(updated['revenue'],0);expect(updated['futureRevenue'],450);expect(updated['futureProfit'],350);expect(updated['totalRevenue'],450);
+  });
   test('refund retains sale fees; return restores original FIFO value; cannot overrefund/return', () {
     final events=[event(id:'restock-test-001',type:'restock',quantity:3,productId:'product-test-001',cost:1000),event(id:'sale-test-00001',type:'sale',quantity:3,productId:'product-test-001',revenue:1500,fee:30,payment:'card'),event(id:'refund-test-001',type:'refund',target:'sale-test-00001',revenue:500),event(id:'return-test-001',type:'return',quantity:1,target:'sale-test-00001')];
     final a=calculate(events);expect(a.book.value,333);expect(a.summary()['revenue'],1000);expect(a.summary()['fees'],30);expect(a.summary()['cogs'],667);
