@@ -10,11 +10,13 @@ import 'package:business_tracker/core/codec.dart';
 import 'package:business_tracker/core/engine.dart';
 import 'package:business_tracker/core/products.dart';
 import 'package:business_tracker/services/repository.dart';
+import 'package:business_tracker/services/google_sheets.dart';
 import 'package:business_tracker/services/backups.dart';
 import '../test_support/product_flow.dart';
 void main(){
   final binding=IntegrationTestWidgetsFlutterBinding.ensureInitialized();
   testWidgets('upgrade retains records and new universal saves survive restart', (tester) async {
+    expect(GoogleSheets.configured,true,reason:'Android build must include the public Google OAuth client ID.');
     final repo=await Repository.open();
     final legacy=switch(const String.fromEnvironment('EXPECT_LEGACY',defaultValue:'true')){'true'=>true,_=>false};
     if(legacy){expect(repo.state['legacy'],isNotNull);expect(objects(repo.state['events']).length,4);expect(validateState(repo.state).book.stock(legacyProduct),25);expect(objects(repo.state['events'])[0]['date'],null);expect(objects(repo.state['events'])[2]['id'],'upgrade-restock-001');expect(objects(repo.state['events'])[3]['revenue'],777);final original=await openReadOnlyDatabase(path.join(await getDatabasesPath(),'monster-offline.db'));expect(Sqflite.firstIntValue(await original.rawQuery('PRAGMA user_version')),6);expect(Sqflite.firstIntValue(await original.rawQuery('SELECT COUNT(*) FROM events')),4);expect((await original.query('events',where:'id=?',whereArgs:['upgrade-sale-00001'])).single['revenue'],777);await original.close();}

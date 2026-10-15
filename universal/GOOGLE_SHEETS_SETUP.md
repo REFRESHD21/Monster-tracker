@@ -7,8 +7,9 @@ Advanced Apps Script remains available for existing connections.
 
 ## Owner-controlled Google Cloud configuration
 
-This repository contains no Google OAuth client credentials. Public client IDs are
-required at build time. **Do not supply or embed an OAuth client secret.**
+The owner-supplied public Web OAuth client ID is in
+`config/google-oauth.json`, included at build time. It is a public application
+identifier, not a token or secret. The iOS client ID remains owner setup. **Do not supply or embed an OAuth client secret.**
 
 1. Choose an owner-controlled Google Cloud project. Enable Google Sheets API,
    Google Drive API and Google Picker API.
@@ -18,7 +19,8 @@ required at build time. **Do not supply or embed an OAuth client secret.**
    account. Do not request all-Drive or all-spreadsheets scopes.
 3. Create an Android OAuth client with package **au.monster.tracker.plus** and the
    **SHA-1 of the actual existing signing certificate**. Obtain SHA-1 from the
-   CI `apksigner --print-certs` report; do not substitute SHA-256. The APK must
+   CI `apksigner --print-certs` report; do not substitute SHA-256. For the
+   existing certificate it is `8A:E4:48:1C:C9:CE:18:74:44:06:80:BB:98:DA:19:C3:D9:14:65:9B`. The APK must
    retain SHA-256 certificate digest
    `10195e6471ae52ad19633421aa4e50db9bf391fbbb15eb58016c41a6eef1c2dd`.
    The existing key is the historic test certificate; this work does not replace
@@ -30,17 +32,18 @@ required at build time. **Do not supply or embed an OAuth client secret.**
    bootstrap script installs its GIDClientID and reversed-client-ID URL scheme.
    The Picker uses that native iOS client with PKCE/state and the system browser,
    then checks that its selected account matches the connected account.
-6. Add repository Actions variables `GOOGLE_WEB_CLIENT_ID` and
-   `GOOGLE_IOS_CLIENT_ID` (public IDs ending `.apps.googleusercontent.com`).
-   The workflow passes them as Dart defines. The iOS client is also passed to
+6. The Android Web client ID is already configured in `config/google-oauth.json`.
+   For iOS, add the repository Actions variable `GOOGLE_IOS_CLIENT_ID`
+   (a public ID ending `.apps.googleusercontent.com`).
+   The workflow passes the JSON config and iOS variable as Dart defines. The iOS client is also passed to
    the bootstrap script as an environment variable. For manual builds:
 
    ```sh
    export GOOGLE_IOS_CLIENT_ID='YOUR_IOS_PUBLIC_CLIENT_ID'
    python3 scripts/flutter/bootstrap.py
    cd universal
-   flutter build apk --release --dart-define=GOOGLE_WEB_CLIENT_ID=YOUR_WEB_PUBLIC_CLIENT_ID
-   flutter build ios --release --no-codesign --dart-define=GOOGLE_IOS_CLIENT_ID=YOUR_IOS_PUBLIC_CLIENT_ID --dart-define=GOOGLE_WEB_CLIENT_ID=YOUR_WEB_PUBLIC_CLIENT_ID
+   flutter build apk --release --dart-define-from-file=config/google-oauth.json
+   flutter build ios --release --no-codesign --dart-define=GOOGLE_IOS_CLIENT_ID=YOUR_IOS_PUBLIC_CLIENT_ID --dart-define-from-file=config/google-oauth.json
    ```
 
 7. While the consent screen is in Testing, add the actual Google accounts as test

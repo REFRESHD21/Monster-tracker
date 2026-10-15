@@ -1,10 +1,11 @@
-# Business Tracker 2.1.0 (13)
+# Business Tracker 2.1.1 (14)
 
 Current Flutter improvements preserve sale totals and existing records, add quick
 sales, product-specific deals and safe archive/restore. Native Google account
 connection, new/existing spreadsheet selection, report preview and retry-safe
-one-way uploads are implemented. Google Cloud client IDs/consent configuration
-and live account verification remain owner setup; see
+one-way uploads are implemented. The owner-supplied public Web OAuth client ID is included in the Android build.
+Google Cloud Android-client/consent configuration and live account verification
+remain owner setup; see
 [Google Sheets setup and testing](GOOGLE_SHEETS_SETUP.md). Without configured IDs,
 the build explicitly reports setup is required. Apps Script is an advanced option.
 
@@ -34,9 +35,9 @@ a historical return. History, names, reports, receipts and FIFO costs remain.
 Archive/deal settings and the last payment method are included in full backups.
 Older 2.0.0 backups remain readable; their missing settings mean active/no deal.
 
-The Android version is **2.1.0 (13)** with the same package and existing signing
-certificate. CI opens the actual shipped 2.0.0 release on populated records,
-then installs 2.1.0 over it without uninstalling. Physical-device checks and
+The Android version is **2.1.1 (14)** with the same package and existing signing
+certificate. CI opens the actual shipped 2.1.0 release on populated records,
+then installs 2.1.1 over it without uninstalling. Physical-device checks and
 live Sheets setup remain as described below. No payment-provider integration
 or store publication is part of this update.
 
@@ -75,7 +76,7 @@ The cache is compatibility infrastructure, not an owned production release key.
 
 ## Migration and records
 
-- The Android package remains **au.monster.tracker.plus**; versionCode is **13**.
+- The Android package remains **au.monster.tracker.plus**; versionCode is **14**.
 - On first launch, an existing `monster-offline.db` is exported through the original
   Java validators. A pending payment checkout blocks migration rather than losing
   a reserved or potentially paid sale. Resolve such checkouts in 1.6.3 before updating.
