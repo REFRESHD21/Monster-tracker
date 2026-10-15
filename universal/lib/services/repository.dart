@@ -8,7 +8,6 @@ import '../core/codec.dart';
 import '../core/engine.dart';
 import '../core/legacy.dart';
 import '../core/products.dart';
-import '../core/purchases.dart';
 import '../core/stocktakes.dart';
 
 class Repository {
@@ -119,7 +118,16 @@ class Repository {
     validateState(next);
     await save(next);return true;
   }
-  Future<bool> confirmStocktakeSession(String sessionId) async {
+  final Map<String,Future<bool>> _stocktakesInFlight={};
+  Future<bool> confirmStocktakeSession(String sessionId) {
+    final flight=_stocktakesInFlight[sessionId];
+    if(flight!=null)return flight;
+    final future=_confirmStocktakeSession(sessionId);
+    _stocktakesInFlight[sessionId]=future;
+    future.then<void>((_)=>_stocktakesInFlight.remove(sessionId),onError:(Object error,StackTrace stack){_stocktakesInFlight.remove(sessionId);});
+    return future;
+  }
+  Future<bool> _confirmStocktakeSession(String sessionId) async {
     final next=confirmStocktake(state,sessionId);
     if(canonical(next)==canonical(state))return false;
     await save(next);return true;

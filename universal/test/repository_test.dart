@@ -8,6 +8,7 @@ import 'package:business_tracker/core/codec.dart';
 import 'package:business_tracker/core/engine.dart';
 import 'package:business_tracker/services/repository.dart';
 import 'package:business_tracker/core/purchases.dart';
+import 'package:business_tracker/core/stocktakes.dart';
 import 'package:business_tracker/services/sync.dart';
 void main(){
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -68,6 +69,18 @@ void main(){
     final conflicting=objects(purchase).map(clone).toList();obj(conflicting.first['purchaseLine'])['cost']=4801;conflicting.first['cost']=4801;
     await expectLater(r.recordPurchase(conflicting),throwsFormatException);expect(validateState(r.state).book.stock('purchase-product-01'),52);
     await r.close();
+  });
+  test('stocktake confirmation is atomic, concurrent retries apply adjustments once, and history survives reopen',()async{
+    var r=await Repository.open();final state=clone(r.state);
+    state['products']=[{'id':'stocktake-product-01','name':'Drink','category':'Monster','variant':'500 ml','sellingPrice':350,'purchaseCost':100,'minimum':0,'barcode':'','photo':null}];await r.save(state);
+    await r.append(event(id:'stocktake-restock-01',type:'restock',quantity:5,productId:'stocktake-product-01',cost:500));
+    var draft=startStocktake(r.state,id:'stocktake-repo-session-01',at:1780000000000);
+    draft=recordStocktakeCount(draft,'stocktake-repo-session-01','stocktake-product-01',sellable:3,damaged:1,eventCount:1,countedAt:1780000001000);await r.save(draft);
+    final results=await Future.wait([r.confirmStocktakeSession('stocktake-repo-session-01'),r.confirmStocktakeSession('stocktake-repo-session-01')]);
+    expect(results,[true,true]);expect(validateState(r.state).book.stock('stocktake-product-01'),3);
+    expect(objects(r.state['events']).where((e)=>e['stocktakeSessionId']=='stocktake-repo-session-01'),hasLength(2));
+    expect(await r.confirmStocktakeSession('stocktake-repo-session-01'),false);await r.close();
+    r=await Repository.open();expect(stocktakeSessions(r.state).single['status'],'completed');expect(validateState(r.state).summary()['revenue'],0);await r.close();
   });
   test('stale repository still cannot overwrite a newer revision',()async{
     final first=await Repository.open(),stale=await Repository.open();

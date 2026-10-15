@@ -154,7 +154,19 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
       const SizedBox(height:8),Expanded(child:ListView(children:[
         if(stocktakeSessions(s).isEmpty)text('No stocktakes recorded yet.'),
         for(final session in stocktakeSessions(s).reversed)...[
-          Builder(builder:(ctx){final products=objects(session['snapshotProducts']),counts=objects(session['counts']);final stateLabel=session['status']=='completed'?'Completed':'In progress';return Card(child:ListTile(title:Text('$stateLabel · ${displayDate(session['startedAt'])}'),subtitle:Text('${counts.length} of ${products.length} products counted'),trailing:TextButton(key:ValueKey('open-stocktake-${session['id']}'),onPressed:()=>stocktakeCounting(c,session['id'] as String),child:Text(session['status']=='completed'?'View':'Continue')));}),
+          Builder(builder:(ctx){
+            final products=objects(session['snapshotProducts']),counts=objects(session['counts']);
+            final stateLabel=session['status']=='completed'?'Completed':'In progress';
+            return Card(child:ListTile(
+              title:Text('$stateLabel · ${displayDate(session['startedAt'])}'),
+              subtitle:Text('${counts.length} of ${products.length} products counted'),
+              trailing:TextButton(
+                key:ValueKey('open-stocktake-${session['id']}'),
+                onPressed:()=>stocktakeCounting(c,session['id'] as String),
+                child:Text(session['status']=='completed'?'View':'Continue'),
+              ),
+            ));
+          }),
         ],
       ])),
     ]))))));
@@ -176,7 +188,23 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
       return SafeArea(child:SizedBox(height:MediaQuery.sizeOf(b).height*.88,child:Padding(padding:const EdgeInsets.all(20),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
         Row(children:[Expanded(child:title(complete?'Stocktake results':'Count products')),Text('$counted / ${preview.length}')]),
         text('A discrepancy is not recorded as a sale. Damaged units are written off separately. Found stock has unknown purchase cost until corrected with a documented inventory receipt.'),
-        Expanded(child:ListView(children:[for(var i=0;i<preview.length;i++)Builder(builder:(ctx){final row=preview[i],snap=objects(session['snapshotProducts'])[i],label='${row['name']}${row['variant']==''?'':' · ${row['variant']}'}';if(row['counted']!=true)return Card(child:ListTile(title:Text(label),subtitle:Text('Snapshot at start: ${snap['expectedAtStart']} units'),trailing:TextButton(onPressed:complete?null:()=>enterCount(snap),child:const Text('Count'))));return Card(child:ListTile(title:Text(label),subtitle:Text('Expected at count ${row['expected']} · now ${row['current']}\nCounted sellable ${row['sellable']} + damaged ${row['damaged']} · variance ${row['variance']}\nProjected sellable after reconciliation ${row['projected']}'),isThreeLine:true,trailing:complete?const Icon(Icons.check_circle_outline):TextButton(onPressed:()=>enterCount(snap),child:const Text('Edit')));})])),
+        Expanded(child:ListView(children:[
+          for(var i=0;i<preview.length;i++)Builder(builder:(ctx){
+            final row=preview[i],snap=objects(session['snapshotProducts'])[i];
+            final label='${row['name']}${row['variant']==''?'':' · ${row['variant']}'}';
+            if(row['counted']!=true)return Card(child:ListTile(
+              title:Text(label),
+              subtitle:Text('Snapshot at start: ${snap['expectedAtStart']} units'),
+              trailing:TextButton(onPressed:complete?null:()=>enterCount(snap),child:const Text('Count')),
+            ));
+            return Card(child:ListTile(
+              title:Text(label),
+              subtitle:Text('Expected at count ${row['expected']} · now ${row['current']}\nCounted sellable ${row['sellable']} + damaged ${row['damaged']} · variance ${row['variance']}\nProjected sellable after reconciliation ${row['projected']}'),
+              isThreeLine:true,
+              trailing:complete?const Icon(Icons.check_circle_outline):TextButton(onPressed:()=>enterCount(snap),child:const Text('Edit')),
+            ));
+          }),
+        ])),
         if(!complete&&counted==preview.length&&preview.any((x)=>x['conflict']==true))const Text('A newer sale consumed more stock than this count leaves available. Recount the affected item before confirming.',style:TextStyle(color:Colors.red)),
         if(complete)OutlinedButton.icon(onPressed:()=>Navigator.pop(b),icon:const Icon(Icons.close),label:const Text('Close'))else FilledButton.icon(key:const ValueKey('confirm-stocktake'),onPressed:ready?()=>perform(c,()async{final yes=await showDialog<bool>(context:c,builder:(d)=>AlertDialog(title:const Text('Confirm stocktake adjustments?'),content:const Text('This saves permanent, auditable inventory adjustments. Missing and damaged units affect stock value and net profit, not sales revenue or sales-based product profit.'),actions:[TextButton(onPressed:()=>Navigator.pop(d,false),child:const Text('Review again')),FilledButton(onPressed:()=>Navigator.pop(d,true),child:const Text('Confirm adjustments'))]));if(yes==true)await repo.confirmStocktakeSession(sessionId);},message:'Stocktake adjustments saved.'):null,icon:const Icon(Icons.fact_check_outlined),label:const Text('Review and confirm')),
       ]))));
