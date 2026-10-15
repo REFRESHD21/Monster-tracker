@@ -8,6 +8,7 @@ import '../core/codec.dart';
 import '../core/engine.dart';
 import '../core/legacy.dart';
 import '../core/products.dart';
+import '../core/purchases.dart';
 
 class Repository {
   final Database db; int revision=0; late Obj state;
@@ -91,6 +92,29 @@ class Repository {
     if(e['type']!='sale')throw const FormatException('Expected a sale.');
     final next=clone(state);(next['events'] as List).add(e);next['lastPayment']=e['payment'];
     if(attachment!=null)(next['attachments'] as List).add({...attachment,'eventId':id});
+    await save(next);return true;
+  }
+  final Map<String,Future<bool>> _purchasesInFlight={};
+  Future<bool> recordPurchase(List<Obj> entries) {
+    if(entries.isEmpty) return Future<bool>.error(const FormatException('Add at least one purchase line.'));
+    final batch=obj(entries.first['purchaseBatch']),id=batch['id'] as String;
+    final flight=_purchasesInFlight[id];
+    if(flight!=null)return flight;
+    final future=_recordPurchase(entries,id);
+    _purchasesInFlight[id]=future;
+    future.then<void>((_)=>_purchasesInFlight.remove(id),onError:(Object error,StackTrace stack){_purchasesInFlight.remove(id);});
+    return future;
+  }
+  Future<bool> _recordPurchase(List<Obj> entries,String purchaseId) async {
+    final saved=objects(state['events']).where((e)=>e['purchaseBatch'] is Map && obj(e['purchaseBatch'])['id']==purchaseId).toList()
+      ..sort((a,b)=>'${obj(a['purchaseLine'])['id']}'.compareTo('${obj(b['purchaseLine'])['id']}'));
+    if(saved.isNotEmpty){
+      final normalize=(List<Obj> rows){final ordered=List<Obj>.of(rows)..sort((a,b)=>'${obj(a['purchaseLine'])['id']}'.compareTo('${obj(b['purchaseLine'])['id']}'));return canonical(ordered.map((e){final x=clone(e);x.remove('id');x.remove('recordedAt');return x;}).toList());};
+      if(normalize(saved)==normalize(entries))return false;
+      throw const FormatException('This purchase ID already has different lines. No stock was added.');
+    }
+    final next=clone(state);(next['events'] as List).addAll(entries);
+    validateState(next);
     await save(next);return true;
   }
   Future<void> restore(Obj incoming) async {final next=mergeBackup(state,incoming);if((next['businessId'] as String).isEmpty)next['businessId']=state['businessId'];await save(next,restoring:true);}

@@ -7,6 +7,7 @@ import 'package:path/path.dart' as path;
 import 'package:business_tracker/core/codec.dart';
 import 'package:business_tracker/core/engine.dart';
 import 'package:business_tracker/services/repository.dart';
+import 'package:business_tracker/core/purchases.dart';
 import 'package:business_tracker/services/sync.dart';
 void main(){
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -54,6 +55,18 @@ void main(){
     expect(await outcome,true);expect(await r.recordSale(sale),false);
     expect(objects(r.state['events']).where((e)=>e['id']==sale['id']).length,1);
     expect(validateState(r.state).book.stock('locked-product-001'),2);expect(r.state['lastPayment'],'card');
+    await r.close();
+  });
+
+  test('purchase batches commit atomically and retries do not add stock twice',()async{
+    final r=await Repository.open();final state=clone(r.state);
+    state['products']=[{'id':'purchase-product-01','name':'Drink','category':'Monster','variant':'500 ml','sellingPrice':350,'purchaseCost':100,'minimum':0,'barcode':'','photo':null}];await r.save(state);
+    var n=0;final purchase=createPurchaseEvents(purchaseId:'purchase-batch-0001',supplier:'Costco',location:'Perth',reference:'receipt-7',note:'',date:1780000000000,newEventId:()=> 'purchase-event-id-${n++}',lines:[{'lineId':'purchase-line-id-001','productId':'purchase-product-01','packSize':24,'packCount':2,'cost':4800},{'lineId':'purchase-line-id-002','productId':'purchase-product-01','packSize':4,'packCount':1,'cost':1000}]);
+    final result=await Future.wait([r.recordPurchase(purchase),r.recordPurchase(purchase)]);
+    expect(result.every((saved)=>saved),true);expect(objects(r.state['events']).length,2);expect(validateState(r.state).book.stock('purchase-product-01'),52);
+    expect(await r.recordPurchase(purchase),false);expect(validateState(r.state).book.stock('purchase-product-01'),52);
+    final conflicting=clone(purchase);obj(conflicting.first['purchaseLine'])['cost']=4801;conflicting.first['cost']=4801;
+    await expectLater(r.recordPurchase(conflicting),throwsFormatException);expect(validateState(r.state).book.stock('purchase-product-01'),52);
     await r.close();
   });
   test('stale repository still cannot overwrite a newer revision',()async{

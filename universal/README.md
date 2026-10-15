@@ -1,4 +1,4 @@
-# Business Tracker 2.1.2 (15)
+# Business Tracker 2.2.0 (16)
 
 Current Flutter improvements preserve sale totals and existing records, add quick
 sales, product-specific deals and safe archive/restore. Native Google account
@@ -59,9 +59,9 @@ existing damaged-stock adjustment immediately after receiving them. The app
 does not infer an inventory return from a money refund. Record the refund and
 physical return separately as the existing history requires.
 
-The Android version is **2.1.2 (15)** with the same package and existing signing
+The Android version is **2.2.0 (16)** with the same package and existing signing
 certificate. CI opens the actual shipped 2.1.0 release on populated records,
-then installs 2.1.2 over it without uninstalling. Physical-device checks and
+then installs 2.2.0 over it without uninstalling. Physical-device checks and
 live Sheets setup remain as described below. No payment-provider integration
 or store publication is part of this update.
 

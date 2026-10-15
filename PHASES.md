@@ -85,3 +85,24 @@ Phase 5 first build [38399274357](https://github.com/REFRESHD21/Monster-tracker/
 [Run 38409682236](https://github.com/REFRESHD21/Monster-tracker/actions/runs/38409682236) succeeded for code commit `cf82dd204d8359bf022e53cc920f2527736fcde0`: 111 host checks, 19 backend tests using fake Stripe responses, Android unit tests, all 45 airplane-mode instrumentation checks, assembleDebug/assembleRelease, and package/signature verification. The installable `Monster-Tracker-1.6.1.apk` is in `monster-tracker-apk`; a separate `monster-tracker-debug-apk` and build-report artifact are also available. The source remains the existing native Java/SQLite application, with versioned migrations and no reset of existing records. This verifies compiled software/emulator behavior, not real camera capture, remote cloud durability or actual Stripe writes/collection.
 
 Cash/manual refunds have editable/unknown actual dates and append-only corrections. Stock returns are independently confirmed, including pending/failed refund cases. Reserved flavours cannot be physically recounted until their pending payment is resolved; other available stock stays usable offline. Zero-target flavours do not trigger shopping alerts. Saved local queues are finalized transactionally before full backups; unresolved Stripe sessions still require reconciliation before phone transfer. See GITHUB_BUILD.md for current installation, backup limits, signing and rebuild instructions.
+
+## Monster Business intelligence upgrade — staged implementation
+
+The active target is `universal/` (Flutter), branch `feature/flutter-universal-tracker`, commit `d775056` at inspection. The root Java app remains the migration/accounting reference. See [BI_IMPLEMENTATION_PLAN.md](BI_IMPLEMENTATION_PLAN.md) for the inspected data model, dependencies, external blockers, and phased sequence.
+
+### Phase 1 — purchase history and sales/profit foundation (working tree)
+
+- The existing integer-cent, append-only event ledger and FIFO inventory remain the source of truth. Each new multi-product purchase is stored as grouped, immutable costed restock events; retailer observations are explicitly separate.
+- Purchase entry captures supplier, store location, reference, purchase date (including unknown), multiple products, 4/9/12/24/custom pack quantity, pack count, item cost, discount, allocable acquisition cost, actual eligible GST, and notes. Purchase receipt events commit together through one state save and repeated purchase IDs are idempotent; conflicting resubmissions are rejected.
+- Purchase history groups new receipt events and shows older standalone restock records without inventing missing supplier or pack facts. Full backups serialize these event details; the one-way Sheets Purchases tab includes the purchase fields.
+- Added purchase-cost, FIFO reconciliation, backup roundtrip, invalid-link and duplicate-submission tests. Existing sales/profit, refunds, returns, damaged-stock treatment, and net-profit functions remain in place.
+- This phase has not passed the Flutter test/build workflow. The bundled Dart VM aborts in this workspace before running `dart format` or Flutter tests; the legacy Java/SQLite and Sheets suites remain runnable and passed.
+
+### Remaining BI phases
+
+2. Reconciled stocktake sessions with per-product count cutoffs and idempotent adjustments.
+3. Price-observation model, retailer coverage verification and persistent Wednesday scheduler; manual observations remain the fallback where public data cannot be verified.
+4. Deduplicated price alerts and constrained multipack optimizer.
+5. Flavour analytics, margin alerts and optional customer-linked sales.
+6. Explainable restock recommendations and sales forecasts with rolling backtests.
+7. Cross-feature backup/Sheets regression, in-place upgrade verification and release artifacts.

@@ -8,7 +8,7 @@ Map<String,List<List<dynamic>>> sheetSnapshot(Obj state) {
   return {
     'Products':rows(['id','name','category','variant','sellingPrice','twoItemPrice','archived','purchaseCost','minimum','barcode'],products),
     'Sales':rows(eventKeys,events.where((e)=>['single','deal','sale','refund','refund_observation','return','undo'].contains(e['type']))),
-    'Purchases':rows(eventKeys,events.where((e)=>['opening','restock','transfer','missing','damaged','undo'].contains(e['type']))),
+    'Purchases':rows([...eventKeys,'purchaseBatch','purchaseLine'],events.where((e)=>['opening','restock','transfer','missing','damaged','undo'].contains(e['type']))),
     'Expenses':rows(eventKeys,events.where((e)=>['expense','undo'].contains(e['type']))),
     'OriginalDocuments':rows(['id','kind','supplier','reference','date','amount','gst','lines','note'],objects(state['legacy']?['business']?['documents'] ?? [])),
   };

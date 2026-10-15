@@ -1,7 +1,7 @@
 name: business_tracker
 description: Offline business inventory, sales and receipts for Android and iOS.
 publish_to: none
-version: 2.1.2+15
+version: 2.2.0+16
 environment:
   sdk: '>=3.8.0 <4.0.0'
 dependencies:

@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'codec.dart';
+import 'purchases.dart';
 
 const legacyProduct = 'legacy-unassigned';
 const themes = ['light', 'dark', 'green', 'ocean', 'purple', 'warm neutral'];
@@ -198,6 +199,7 @@ Accounts validateState(Obj s) {
     if(p['photo'] != null){verifyAttachment(obj(p['photo']));if(p['photo']['mime']=='application/pdf')throw const FormatException('Product photos must be JPG or PNG images.');}
   }
   for(final e in objects(s['events'])) { for(final a in objects(e['allocations'])) {if(!products.contains(a['productId'])) throw const FormatException('Unknown product in history.');} if(e['type']=='transfer' && (!products.contains(e['from']) || !products.contains(e['to']))) throw const FormatException('Unknown transfer product.'); }
+  purchaseHistory(s);
   final ids=<String>{};for(final a in objects(s['attachments'])) {verifyAttachment(a,s);if(!ids.add(a['id'] as String)) throw const FormatException('Duplicate receipt.');}
   final result=calculate(objects(s['events']));for(final a in objects(s['attachments'])) {if(!result.history.containsKey(a['eventId'])) throw const FormatException('Receipt has no transaction.');}
   return result;

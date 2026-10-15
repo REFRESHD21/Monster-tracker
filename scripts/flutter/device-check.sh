@@ -82,7 +82,7 @@ root=ET.parse('device-evidence/direct-release-inventory-ui.xml').getroot()
 labels=[node.get(k,'') for node in root.iter() for k in ('text','content-desc')]
 assert any('Units on hand' in label for label in labels), labels
 assert any(re.search(r'(?<![0-9])25(?![0-9])',label) for label in labels), labels
-print('Release 2.1.0 → release 2.1.2 shows the original 25 units before any test build runs.')
+print('Release 2.1.0 → release 2.2.0 shows the original 25 units before any test build runs.')
 CHECK
 adb exec-out screencap -p > device-evidence/direct-release-upgrade.png
 adb logcat -d > device-evidence/direct-release-logcat.txt
