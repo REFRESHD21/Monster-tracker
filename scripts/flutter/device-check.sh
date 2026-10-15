@@ -70,10 +70,17 @@ adb install -r build/app/outputs/flutter-apk/app-release.apk
 adb logcat -c
 adb shell am start -W -n au.monster.tracker.plus/au.monster.tracker.MainActivity
 wait_for_ui 'Record sale' direct-release
+for attempt in $(seq 1 5); do
+  timeout 20s adb shell uiautomator dump /sdcard/business-upgrade-inventory.xml >/dev/null 2>&1 || true
+  adb exec-out cat /sdcard/business-upgrade-inventory.xml > device-evidence/direct-release-inventory-ui.xml || true
+  if grep -Fq 'Units on hand' device-evidence/direct-release-inventory-ui.xml; then break; fi
+  adb shell input swipe 500 1500 500 400 450
+done
 python3 - <<'CHECK'
 import xml.etree.ElementTree as ET,re
-root=ET.parse('device-evidence/direct-release-ui.xml').getroot()
+root=ET.parse('device-evidence/direct-release-inventory-ui.xml').getroot()
 labels=[node.get(k,'') for node in root.iter() for k in ('text','content-desc')]
+assert any('Units on hand' in label for label in labels), labels
 assert any(re.search(r'(?<![0-9])25(?![0-9])',label) for label in labels), labels
 print('Release 2.1.0 → release 2.1.2 shows the original 25 units before any test build runs.')
 CHECK
