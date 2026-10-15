@@ -19,6 +19,7 @@ class SaleSheet extends StatefulWidget {
 class _SaleSheetState extends State<SaleSheet> {
   final quantity = TextEditingController(text:'1'), total = TextEditingController(), fee = TextEditingController(text:'0.00'), gst = TextEditingController(text:'0.00'), note = TextEditingController();
   final id = const Uuid().v4();
+  final recordedAt = DateTime.now().millisecondsSinceEpoch;
   late String payment = widget.payment;
   String mode = 'single', error = '';
   bool saving = false, saved = false, gstRegistered = false, editedTotal = false;
@@ -41,6 +42,7 @@ class _SaleSheetState extends State<SaleSheet> {
       final q=integer(int.tryParse(quantity.text),1,10000);
       if(q>widget.stock)throw const FormatException('Not enough stock. Reduce the quantity or restock this product.');
       final e=event(id:id,type:'sale',quantity:q,productId:widget.product['id'],revenue:cents(total.text),payment:payment,fee:cents(fee.text),outputGst:gstRegistered?cents(gst.text):0,note:note.text.trim(),date:date.subtract(const Duration(hours:8)).millisecondsSinceEpoch);
+      e['recordedAt']=recordedAt;
       e['productName']=productLabel(widget.product);
       e['saleOption']=mode;
       await widget.onSave(e,receipt);

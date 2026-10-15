@@ -36,9 +36,9 @@ void main(){
     expect(saved!['quantity'],3);expect(saved!['revenue'],1050);expect(saved!['payment'],'card');
   });
   testWidgets('invalid quantity and failed save remain editable without creating another draft',(t)async{
-    final ids=<String>[];await open(t,product(),(e,a)async{ids.add(e['id']);throw const FormatException('Storage unavailable');});
+    final ids=<String>[],entries=<String>[];await open(t,product(),(e,a)async{ids.add(e['id']);entries.add(canonical(e));throw const FormatException('Storage unavailable');});
     await t.enterText(find.byType(TextField).at(0),'21');await t.tap(find.byKey(const ValueKey('confirm-sale')));await t.pumpAndSettle();expect(ids,isEmpty);expect(find.textContaining('Not enough stock'),findsOneWidget);
     await t.enterText(find.byType(TextField).at(0),'1');await t.tap(find.byKey(const ValueKey('confirm-sale')));await t.pumpAndSettle();expect(find.text('Storage unavailable'),findsOneWidget);
-    await t.tap(find.byKey(const ValueKey('confirm-sale')));await t.pumpAndSettle();expect(ids.length,2);expect(ids.toSet().length,1);
+    await t.tap(find.byKey(const ValueKey('confirm-sale')));await t.pumpAndSettle();expect(ids.length,2);expect(ids.toSet().length,1);expect(entries.toSet().length,1);
   });
 }

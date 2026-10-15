@@ -70,4 +70,11 @@ void main() {
     final chosen=mergeBackup(current,decodeBackup(encodeBackup(explicit)));
     expect(chosen['products'][0]['twoItemPrice'],null);expect(chosen['products'][0]['archived'],false);expect(chosen['lastPayment'],'cash');
   });
+  test('unreceived supplier lines block archive even with zero on-hand stock',(){
+    final s=state();s['legacy']={'business':{'documents':[{'id':'purchase-pending-001','lines':[{'id':'pending-line-001','productId':'flavour-test-001','stock':true,'packs':2,'packSize':6}]}],'deliveries':[{'lineId':'pending-line-001','quantity':4}],'cancellations':[]}};
+    final removal=productRemoval(s,'flavour-test-001');expect(removal.stock,0);expect(removal.pending,1);expect(removal.canArchive,false);expect(removal.explanation,contains('supplier'));
+    s['legacy']['business']['deliveries'][0]['quantity']=12;expect(productRemoval(s,'flavour-test-001').canArchive,true);
+    s['legacy']['business']['deliveries']=[];s['legacy']['business']['cancellations']=[{'documentId':'purchase-pending-001'}];expect(productRemoval(s,'flavour-test-001').canArchive,true);
+  });
+
 }

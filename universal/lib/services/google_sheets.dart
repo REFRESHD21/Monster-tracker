@@ -1,7 +1,8 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:uuid/uuid.dart';
+import 'package:flutter/services.dart';
+import 'repository.dart';
 import '../core/codec.dart';
 import '../core/engine.dart';
 import '../core/sheet_snapshot.dart';
@@ -17,15 +18,15 @@ class GoogleSheets {
   static GoogleSignIn get signIn=>_signIn ??=GoogleSignIn(scopes:[scope],clientId:Platform.isIOS?iosClient:null,serverClientId:webClient.isEmpty?null:webClient);
   static GoogleSignIn? _signIn;
   static Future<String> installation() async {
-    var id=await secrets.read(key:'sheets-installation');
-    if(id==null){id=const Uuid().v4();await secrets.write(key:'sheets-installation',value:id);}
-    return id;
+    final repo=await Repository.open(migrate:false);
+    try{return (await repo.db.query('local_identity')).single['id'] as String;}finally{await repo.close();}
   }
   static Future<void> connect() async {
     if(!configured)throw const FormatException('Google connection is not configured in this build. The owner must register Android/iOS OAuth clients and build with their public client IDs. Advanced Apps Script remains available.');
     await signIn.signOut();
     final account=await signIn.signIn();
     if(account==null)throw const FormatException('Google account selection cancelled.');
+    for(final key in ['sheets-google-id','sheets-mode','sheets-snapshot','sheets-last','sheets-error']){await secrets.delete(key:key);}
     await secrets.write(key:'sheets-account',value:account.id);
     await secrets.write(key:'sheets-email',value:account.email);
   }
@@ -50,6 +51,15 @@ class GoogleSheets {
     }on SocketException{throw const FormatException('Offline. Changes are saved on this phone and will retry when connected.');}
     finally {client.close(force:true);}
   }
+  static Future<String> pick() async {
+    final email=await secrets.read(key:'sheets-email');
+    final id=await const MethodChannel('au.monster.tracker.plus/sheets-picker').invokeMethod<String>('pick',{'email':email,'clientId':iosClient});
+    if(id==null || !RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(id))throw const FormatException('No spreadsheet selected.');
+    final account=signIn.currentUser ?? await signIn.signInSilently(suppressErrors:false);
+    if(account==null)throw const FormatException('Reconnect your Google account.');
+    await account.clearAuthCache();
+    return id;
+  }
   static Future<List<Obj>> available() async {
     final result=<Obj>[];String? page;
     do {
@@ -69,13 +79,13 @@ class GoogleSheets {
     await secrets.delete(key:'sheets-snapshot');await secrets.delete(key:'sheets-last');
     await secrets.delete(key:'sheets-error');
   }
-  static Future<void> upload(Obj state) async {
+  static Future<void> upload(Obj state,{bool force=false}) async {
     validateState(state);
     final id=await secrets.read(key:'sheets-google-id');
     if(id==null)throw const FormatException('Choose a spreadsheet first.');
     final installationId=await installation(),snapshot=sheetSnapshot(state);
     final hash=digest(snapshot);
-    if(await secrets.read(key:'sheets-snapshot')==hash)return;
+    if(!force && await secrets.read(key:'sheets-snapshot')==hash)return;
     await uploadSnapshot(snapshot:snapshot,installation:installationId,
       metadata:()=>api('/v4/spreadsheets/$id?fields=sheets(properties)'),
       send:(requests)async{await api('/v4/spreadsheets/$id:batchUpdate',method:'POST',body:{'requests':requests});},

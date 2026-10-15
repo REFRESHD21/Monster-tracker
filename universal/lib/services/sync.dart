@@ -40,6 +40,18 @@ class Sheets {
     if(enabled){await Workmanager().registerPeriodicTask('au.monster.tracker.plus.sync','au.monster.tracker.plus.sync',frequency:const Duration(minutes:15),constraints:Constraints(networkType:NetworkType.connected));}
     else{await Workmanager().cancelByUniqueName('au.monster.tracker.plus.sync');}
   }
+  static Future<void> initializeConnection()=>exclusive((_)async{});
+  static Future<void> _identity(Repository repo) async {
+    final local=(await repo.db.query('local_identity')).single;
+    final previous=await secrets.read(key:'sheets-local-identity');
+    if(previous==local['id'])return;
+    // Keychain can survive an iOS uninstall. A new local database must not inherit
+    // another installation's connection, while an in-place v3 upgrade retains it.
+    if(previous!=null || local['migrated']==0){
+      for(final key in ['sheets-mode','sheets-google-id','sheets-account','sheets-email','sheets-snapshot','sheets-url','sheets-token','sheets-auto','sheets-last','sheets-error']){await secrets.delete(key:key);}
+    }else if(await secrets.read(key:'sheets-url')!=null){await secrets.write(key:'sheets-mode',value:'script');}
+    await secrets.write(key:'sheets-local-identity',value:local['id'] as String);
+  }
   static Future<T> exclusive<T>(Future<T> Function(Repository) fn) async {
     final repo=await Repository.open(migrate:false),owner=const Uuid().v4();
     var acquired=false;
@@ -51,6 +63,7 @@ class Sheets {
         await txn.insert('task_lock',{'name':'sheets','owner':owner,'expires':now+3600000});return true;
       });
       if(!acquired)throw const FormatException('An upload or connection change is already in progress. Retry shortly.');
+      await _identity(repo);
       return await fn(repo);
     }finally{
       if(acquired)await repo.db.delete('task_lock',where:'name=? AND owner=?',whereArgs:['sheets',owner]);
@@ -64,7 +77,7 @@ class Sheets {
   static Future<void> upload(Obj state,{bool force=false})=>exclusive((repo) async {
     // Re-read under the lock: a scheduled task may have captured an older revision.
     try {
-      if(await secrets.read(key:'sheets-mode')=='google'){await GoogleSheets.upload(repo.state);}
+      if(await secrets.read(key:'sheets-mode')=='google'){await GoogleSheets.upload(repo.state,force:force);}
       else{await _scriptUpload(repo.state,force:force);}
     }catch(e){await secrets.write(key:'sheets-error',value:'$e');rethrow;}
   });

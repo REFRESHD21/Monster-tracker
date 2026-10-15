@@ -46,7 +46,7 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
   @override void initState(){super.initState();WidgetsBinding.instance.addObserver(this);autoTimer=Timer.periodic(const Duration(minutes:2),(_)=>automatic());Future.microtask(automatic);}
   @override void dispose(){WidgetsBinding.instance.removeObserver(this);autoTimer?.cancel();super.dispose();}
   @override void didChangeAppLifecycleState(AppLifecycleState state){if(state==AppLifecycleState.resumed)automatic();}
-  Future<void> automatic() async {if(busy || syncing)return;syncing=true;try {try{if(await secrets.read(key:'sheets-auto')=='true')await Sheets.upload(s);}catch(_){}await refreshSyncStatus();final p=await secrets.read(key:'backup-password'),every=await secrets.read(key:'backup-frequency'),last=int.tryParse(await secrets.read(key:'backup-last') ?? '0') ?? 0;if(p!=null && every!=null && DateTime.now().millisecondsSinceEpoch-last>(every=='weekly'?7:1)*86400000){await Backups.recovery(s,p);await secrets.write(key:'backup-last',value:'${DateTime.now().millisecondsSinceEpoch}');}}catch(_){}finally{syncing=false;} }
+  Future<void> automatic() async {if(busy || syncing)return;syncing=true;try {try{await Sheets.initializeConnection();if(await secrets.read(key:'sheets-auto')=='true')await Sheets.upload(s);}catch(_){}await refreshSyncStatus();final p=await secrets.read(key:'backup-password'),every=await secrets.read(key:'backup-frequency'),last=int.tryParse(await secrets.read(key:'backup-last') ?? '0') ?? 0;if(p!=null && every!=null && DateTime.now().millisecondsSinceEpoch-last>(every=='weekly'?7:1)*86400000){await Backups.recovery(s,p);await secrets.write(key:'backup-last',value:'${DateTime.now().millisecondsSinceEpoch}');}}catch(_){}finally{syncing=false;} }
   Future<void> perform(BuildContext c,Future<void> Function() fn,{String message='Saved. Historical records retained.'}) async {
     if(busy)return;setState(()=>busy=true);
     try {await fn();if(mounted){setState((){});ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text(message)));}}
@@ -185,22 +185,24 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
     await showDialog<void>(context:c,builder:(d)=>StatefulBuilder(builder:(d,update)=>AlertDialog(title:const Text('Automatic uploads'),content:SwitchListTile(title:const Text('Upload after changes and retry when connected'),subtitle:const Text('Background timing is controlled by Android/iOS.'),value:auto,onChanged:(v)=>update(()=>auto=v)),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel')),FilledButton(onPressed:()=>perform(c,()async{await Sheets.automaticUploads(auto);await refreshSyncStatus();if(d.mounted)Navigator.pop(d);}),child:const Text('Save'))])));
   }
   Future<void> connectSheets(BuildContext c) async {
-    await perform(c,()async{
-      await Sheets.exclusive((_) async {
-        await Sheets.automaticUploads(false);
-        await GoogleSheets.connect();
-        final files=await GoogleSheets.available();
-        if(!c.mounted)return;
-        final choice=await showDialog<String>(context:c,builder:(d)=>AlertDialog(title:const Text('Choose spreadsheet'),content:SizedBox(width:440,child:ListView(shrinkWrap:true,children:[ListTile(leading:const Icon(Icons.add),title:const Text('Create a new spreadsheet'),onTap:()=>Navigator.pop(d,'new')),const Text('Existing spreadsheets already granted to this app. Selecting arbitrary Drive files through Google Picker is not yet available in this build.'),for(final f in files)ListTile(title:Text(f['name']),onTap:()=>Navigator.pop(d,f['id']))])),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel'))]));
-        if(choice==null)return;
-        final id=choice=='new'?(await GoogleSheets.create('${s['businessName']} · Tracker reports'))['spreadsheetId'] as String:choice;
-        await GoogleSheets.select(id);
-        if(!c.mounted)return;
-        await previewSheets(c);
-        if(c.mounted)await uploadSettings(c);
-      });
+    List<Obj>? files;
+    await perform(c,()=>Sheets.exclusive((_) async {
+      await Sheets.automaticUploads(false);
+      await GoogleSheets.connect();
+      files=await GoogleSheets.available();
+    }),message:'Google account selected.');
+    if(files==null || !c.mounted)return;
+    final choice=await showDialog<String>(context:c,builder:(d)=>AlertDialog(title:const Text('Choose spreadsheet'),content:SizedBox(width:440,child:ListView(shrinkWrap:true,children:[ListTile(leading:const Icon(Icons.add),title:const Text('Create a new spreadsheet'),onTap:()=>Navigator.pop(d,'new')),ListTile(leading:const Icon(Icons.folder_open),title:const Text('Choose an existing spreadsheet'),subtitle:const Text('Browse Google Drive with Google Picker'),onTap:()=>Navigator.pop(d,'pick')),const Text('Recently authorized spreadsheets'),for(final f in files!)ListTile(title:Text(f['name']),onTap:()=>Navigator.pop(d,f['id']))])),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel'))]));
+    if(choice==null || !c.mounted)return;
+    var selected=false;
+    await perform(c,()=>Sheets.exclusive((_) async {
+      final id=choice=='new'?(await GoogleSheets.create('${s['businessName']} · Tracker reports'))['spreadsheetId'] as String:choice=='pick'?await GoogleSheets.pick():choice;
+      await GoogleSheets.select(id);selected=true;
       await refreshSyncStatus();
-    },message:'Google Sheets setup finished if a spreadsheet was selected.');
+    }),message:'Spreadsheet connected.');
+    if(!selected || !c.mounted)return;
+    await previewSheets(c);
+    if(c.mounted)await uploadSettings(c);
   }
   Future<void> sheetsSettings(BuildContext c) async {final url=TextEditingController(text:await secrets.read(key:'sheets-url') ?? ''),token=TextEditingController();bool auto=await secrets.read(key:'sheets-auto')=='true';if(!c.mounted)return;await showDialog<void>(context:c,builder:(d)=>StatefulBuilder(builder:(d,update)=>AlertDialog(title:const Text('Advanced Apps Script connection'),content:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[field(url,'Apps Script /exec URL'),field(token,'Private token (blank keeps existing)',password:true),CheckboxListTile(value:auto,onChanged:(v)=>update(()=>auto=v!),title:const Text('Automatically upload records')),const Text('Use a separate spreadsheet and token for each business. Do not share the token.') ])),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel')),FilledButton(onPressed:()=>perform(c,()async{final secret=token.text.isEmpty?await secrets.read(key:'sheets-token') ?? '':token.text;await Sheets.configure(url.text,secret,auto);if(d.mounted)Navigator.pop(d);if(auto)unawaited(automatic());}),child:const Text('Save connection'))])));}
   Future<void> backupSettings(BuildContext c) async {final p=await password(c,'Enable scheduled encrypted backups');if(p==null || !c.mounted)return;String frequency='daily';await showDialog<void>(context:c,builder:(d)=>StatefulBuilder(builder:(d,update)=>AlertDialog(title:const Text('Backup schedule'),content:Column(mainAxisSize:MainAxisSize.min,children:[DropdownButton<String>(value:frequency,items:const [DropdownMenuItem(value:'daily',child:Text('Daily')),DropdownMenuItem(value:'weekly',child:Text('Weekly'))],onChanged:(v)=>update(()=>frequency=v!)),const Text('Keeps seven verified encrypted copies inside this app. Also export off-device. Background timing is controlled by the phone.')]),actions:[TextButton(onPressed:()=>perform(c,()async{await Workmanager().cancelByUniqueName('au.monster.tracker.plus.backup');await secrets.delete(key:'backup-password');await secrets.delete(key:'backup-frequency');if(d.mounted)Navigator.pop(d);}),child:const Text('Disable schedule')),FilledButton(onPressed:()=>perform(c,()async{Backups.password(p);await Backups.recovery(s,p);await secrets.write(key:'backup-password',value:p);await secrets.write(key:'backup-frequency',value:frequency);await secrets.write(key:'backup-last',value:'${DateTime.now().millisecondsSinceEpoch}');await Workmanager().registerPeriodicTask('au.monster.tracker.plus.backup','au.monster.tracker.plus.backup',frequency:Duration(days:frequency=='weekly'?7:1));if(d.mounted)Navigator.pop(d);}),child:const Text('Verify backup & enable'))])));}

@@ -1,3 +1,13 @@
+# Business Tracker 2.1.0 (13)
+
+Current Flutter improvements preserve sale totals and existing records, add quick
+sales, product-specific deals and safe archive/restore. Native Google account
+connection, new/existing spreadsheet selection, report preview and retry-safe
+one-way uploads are implemented. Google Cloud client IDs/consent configuration
+and live account verification remain owner setup; see
+[Google Sheets setup and testing](GOOGLE_SHEETS_SETUP.md). Without configured IDs,
+the build explicitly reports setup is required. Apps Script is an advanced option.
+
 ## Faster sales and safe product removal (included in 2.1.0)
 
 Record sale is available above the bottom navigation on every screen. Tap a
@@ -121,7 +131,7 @@ Settings also exports sales/stock history with quantities and correction referen
 Portable limits are 64 MB, 100,000 normalized events and 10,000 products; oversize
 writes fail visibly before changing records.
 
-After this framework update, reconfigure Google Sheets and automatic backup
+After the initial Java-to-Flutter framework update, reconfigure Google Sheets and automatic backup
 scheduling/folder delivery in Settings. Existing portable backups, original Android
 recovery copies and their passwords remain usable.
 

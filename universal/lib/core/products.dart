@@ -17,7 +17,7 @@ int saleTotal(Obj product, int quantity, {bool deal = false}) {
 }
 
 bool referencesProduct(dynamic value, String id) {
-  if (value is Map) return value.values.any((v) => referencesProduct(v, id));
+  if (value is Map) return value.entries.any((e) => e.key == id || referencesProduct(e.value, id));
   if (value is List) return value.any((v) => referencesProduct(v, id));
   return value == id;
 }
@@ -30,7 +30,7 @@ class ProductRemoval {
   bool get canDelete => canArchive && !history && !references;
   String get explanation => [
     if (stock != 0) '$stock units remain. Sell, transfer, or record missing/damaged stock before removal.',
-    if (pending != 0) '$pending pending transaction(s) or refund(s) must be resolved first. Imported pending refunds must be resolved with the original provider; this app does not process payments.',
+    if (pending != 0) '$pending pending supplier delivery, transaction or refund(s) must be resolved first. Imported pending refunds must be resolved with the original provider; this app does not process payments.',
     if (history || references) 'History or other references exist. Archive hides this product from active lists and sale pickers; its name, transactions and reports are retained.',
     if (canDelete) 'No stock, history or other references exist. This product can be permanently deleted.',
   ].join('\n\n');
@@ -41,6 +41,15 @@ ProductRemoval productRemoval(Obj state, String id) {
   final history = events.any((e) => referencesProduct(e, id));
   final others = {...state}..remove('products')..remove('events');
   var pending = events.where((e) => referencesProduct(e, id) && (e['reservedRefund'] as int? ?? 0) > 0).length;
+  final business=obj(state['legacy']?['business'] ?? {}),delivered=<String,int>{};
+  for(final d in objects(business['deliveries'] ?? [])){delivered[d['lineId']]=(delivered[d['lineId']] ?? 0)+(d['quantity'] as int);}
+  final cancelled=objects(business['cancellations'] ?? []).map((c)=>c['documentId']).toSet();
+  for(final doc in objects(business['documents'] ?? [])){
+    if(cancelled.contains(doc['id']))continue;
+    for(final line in objects(doc['lines'] ?? [])){
+      if(line['productId']==id && line['stock']==true && (delivered[line['id']] ?? 0)<(line['packs'] as int)*(line['packSize'] as int))pending++;
+    }
+  }
   for (final key in ['pendingTransactions', 'pendingSales', 'checkout']) {
     final value = state[key];
     if (value != null && referencesProduct(value, id)) pending++;

@@ -37,6 +37,7 @@ s=s.replace('buildTypes {\n','buildTypes {\n        getByName("debug") { signing
 s=s.replace('sourceCompatibility = JavaVersion.VERSION_11','sourceCompatibility = JavaVersion.VERSION_17').replace('targetCompatibility = JavaVersion.VERSION_11','targetCompatibility = JavaVersion.VERSION_17').replace('jvmTarget = JavaVersion.VERSION_11.toString()','jvmTarget = JavaVersion.VERSION_17.toString()')
 import re
 s=re.sub(r'(release|getByName\("release"\))\s*\{',r'\1 {\n            isMinifyEnabled = false\n            isShrinkResources = false',s)
+s+='\ndependencies { implementation("com.google.android.gms:play-services-auth:21.5.0") }\n'
 gradle.write_text(s)
 info=u/'ios/Runner/Info.plist'
 with info.open('rb') as f:p=plistlib.load(f)
