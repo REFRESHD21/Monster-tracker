@@ -57,20 +57,20 @@ class Sheets {
     final repo=await Repository.open(migrate:false),owner=const Uuid().v4();
     var acquired=false;Timer? heartbeat;
     try {
-      acquired=await repo.db.transaction((txn) async {
+      acquired=await Repository.transaction(repo.db,(txn) async {
         final now=DateTime.now().millisecondsSinceEpoch;
         await txn.delete('task_lock',where:'expires<?',whereArgs:[now]);
         if((await txn.query('task_lock',where:'name=?',whereArgs:['sheets'])).isNotEmpty)return false;
         await txn.insert('task_lock',{'name':'sheets','owner':owner,'expires':now+300000});return true;
       });
       if(!acquired)throw const FormatException('An upload or connection change is already in progress. Retry shortly; an interrupted job releases within five minutes.');
-      heartbeat=Timer.periodic(const Duration(minutes:1),(_)async{try{await repo.db.update('task_lock',{'expires':DateTime.now().millisecondsSinceEpoch+300000},where:'name=? AND owner=?',whereArgs:['sheets',owner]);}catch(_){/* Upload outcome remains pending if the worker stops. */}});
+      heartbeat=Timer.periodic(const Duration(minutes:1),(_)async{try{await Repository.retryDatabase(()=>repo.db.update('task_lock',{'expires':DateTime.now().millisecondsSinceEpoch+300000},where:'name=? AND owner=?',whereArgs:['sheets',owner]));}catch(_){/* Upload outcome remains pending if the worker stops. */}});
       await _identity(repo);
       return await fn(repo);
     }finally{
       heartbeat?.cancel();
-      if(acquired)await repo.db.delete('task_lock',where:'name=? AND owner=?',whereArgs:['sheets',owner]);
-      await repo.close();
+      try{if(acquired)await Repository.retryDatabase(()=>repo.db.delete('task_lock',where:'name=? AND owner=?',whereArgs:['sheets',owner]));}
+      finally{await repo.close();}
     }
   }
   static Future<void> disconnect() async {
@@ -100,7 +100,7 @@ class Sheets {
         if(response.statusCode!=200)throw const FormatException('Sheets endpoint unavailable.');
         final text=await utf8.decoder.bind(response).join().timeout(const Duration(seconds:30));if(text.length>16384)throw const FormatException('Invalid Sheets response.');
         final reply=obj(jsonDecode(text));if(reply['ok']!=true || reply['accepted']!=batch.length)throw const FormatException('Upload rejected. Update the receiver and check its token.');
-        await repo.db.transaction((txn) async {for(final record in batch){await txn.insert('sync_ack',{'destination':url,'business_id':state['businessId'],'record_id':record['id'],'hash':digest(record)},conflictAlgorithm:ConflictAlgorithm.replace);}});
+        await Repository.transaction(repo.db,(txn) async {for(final record in batch){await txn.insert('sync_ack',{'destination':url,'business_id':state['businessId'],'record_id':record['id'],'hash':digest(record)},conflictAlgorithm:ConflictAlgorithm.replace);}});
       }
       await secrets.write(key:'sheets-last',value:DateTime.now().toIso8601String());await secrets.write(key:'sheets-error',value:'');
     } catch(e) {await secrets.write(key:'sheets-error',value:'Upload incomplete. Records remain on this phone. Retry when connected.');rethrow;} finally {client.close(force:true);await repo.close();}

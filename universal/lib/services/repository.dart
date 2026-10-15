@@ -12,6 +12,18 @@ import '../core/products.dart';
 class Repository {
   final Database db; int revision=0; late Obj state;
   Repository._(this.db);
+  // Separate foreground/background connections can contend for SQLite's writer.
+  // Retry only lock contention after the failed transaction has rolled back.
+  static Future<T> retryDatabase<T>(Future<T> Function() action) async {
+    for(var attempt=0;;attempt++){
+      try{return await action();}on DatabaseException catch(e){
+        final detail=e.toString();
+        if(attempt>=7 || !(detail.contains('SQLITE_BUSY') || detail.contains('database is locked') || detail.contains('database table is locked')))rethrow;
+        await Future<void>.delayed(Duration(milliseconds:25*(attempt+1)));
+      }
+    }
+  }
+  static Future<T> transaction<T>(Database db,Future<T> Function(Transaction) action)=>retryDatabase(()=>db.transaction(action));
   static Future<Repository> open({bool migrate=true}) async {
     final db=await openDatabase(path.join(await getDatabasesPath(),'business-tracker-v1.db'),version:4,singleInstance:false,onUpgrade:(db,old,_) async {
       if(old==1){final rows=await db.query('tracker');await db.execute('CREATE TABLE state_chunks (seq INTEGER PRIMARY KEY,body TEXT NOT NULL)');if(rows.isNotEmpty){final text=rows.first['body'] as String;var seq=0;for(final chunk in stateChunks(text)){await db.insert('state_chunks',{'seq':seq++,'body':chunk});} }await db.execute('ALTER TABLE tracker RENAME TO tracker_old');await db.execute('CREATE TABLE tracker (id INTEGER PRIMARY KEY CHECK(id=1),revision INTEGER NOT NULL)');await db.execute('INSERT INTO tracker(id,revision) SELECT id,revision FROM tracker_old');await db.execute('DROP TABLE tracker_old');}
@@ -29,7 +41,7 @@ class Repository {
       await db.execute("CREATE TRIGGER retain_safety BEFORE DELETE ON safety BEGIN SELECT RAISE(ABORT,'Original migration backup is immutable'); END");
     });
     final r=Repository._(db);
-    final loaded=await db.transaction((txn) async {final rows=await txn.query('tracker');if(rows.isEmpty)return null;final chunks=await txn.query('state_chunks',orderBy:'seq');return {'revision':rows.first['revision'],'body':chunks.map((x)=>x['body'] as String).join()};});
+    final loaded=await transaction(db,(txn) async {final rows=await txn.query('tracker');if(rows.isEmpty)return null;final chunks=await txn.query('state_chunks',orderBy:'seq');return {'revision':rows.first['revision'],'body':chunks.map((x)=>x['body'] as String).join()};});
     if(loaded!=null){r.revision=loaded['revision'] as int;r.state=obj(strictJson(loaded['body'] as String));validateState(r.state);return r;}
     if(!migrate){await db.close();throw StateError('Initial migration has not finished.');}
     var initial=emptyState();
@@ -44,14 +56,15 @@ class Repository {
     validateState(candidate);final before=objects(state['events']),after=objects(candidate['events']);
     if(canonical(after.take(before.length).toList())!=canonical(before) || state['legacy']!=null && canonical(state['legacy'])!=canonical(candidate['legacy']))throw const FormatException('Historical records cannot be overwritten.');
     final text=canonical(candidate);if(utf8.encode(text).length>64*1024*1024)throw const FormatException('Data exceeds portable backup limit. Export and contact support.');
-    await db.transaction((txn) async {
+    final expectedRevision=revision;
+    await transaction(db,(txn) async {
       final rows=await txn.query('tracker');
       if(rows.isEmpty){await txn.insert('tracker',{'id':1,'revision':1});}
-      else {if(rows.first['revision']!=revision)throw StateError('Records changed in another task. Reopen and try again.');await txn.update('tracker',{'revision':revision+1},where:'id=1');}
+      else {if(rows.first['revision']!=expectedRevision)throw StateError('Records changed in another task. Reopen and try again.');await txn.update('tracker',{'revision':expectedRevision+1},where:'id=1');}
       await txn.delete('state_chunks');
       var seq=0;for(final chunk in stateChunks(text)){await txn.insert('state_chunks',{'seq':seq++,'body':chunk});}
     });
-    revision++;state=clone(candidate);
+    revision=expectedRevision+1;state=clone(candidate);
   }
   Future<void> append(Obj e, [Obj? attachment]) async {final next=clone(state);(next['events'] as List).add(e);if(attachment!=null)(next['attachments'] as List).add({...attachment,'eventId':e['id']});await save(next);}
   final Map<String, Future<bool>> _salesInFlight = {};

@@ -40,4 +40,29 @@ void main(){
     final reopened=await Repository.open();await reopened.db.insert('task_lock',{'name':'sheets','owner':'dead-worker','expires':0});await reopened.close();
     var ran=false;await Sheets.exclusive((_)async{ran=true;});expect(ran,true);
   });
+  test('sale waits out a real SQLite writer lock and commits once',()async{
+    final r=await Repository.open();
+    final state=clone(r.state);state['products']=[{'id':'locked-product-001','name':'Drink','category':'','variant':'','sellingPrice':350,'purchaseCost':100,'minimum':0,'barcode':'','photo':null}];await r.save(state);
+    await r.append(event(id:'locked-restock-001',type:'restock',quantity:4,productId:'locked-product-001',cost:400));
+    await r.db.execute('PRAGMA busy_timeout=0');
+    final blocker=await openDatabase(path.join(folder.path,'business-tracker-v1.db'),singleInstance:false);
+    await blocker.execute('BEGIN IMMEDIATE');
+    final sale=event(id:'locked-sale-00001',type:'sale',quantity:2,productId:'locked-product-001',revenue:600,payment:'card');
+    final outcome=r.recordSale(sale).then<Object>((value)=>value,onError:(Object error)=>error);
+    await Future<void>.delayed(const Duration(milliseconds:100));
+    await blocker.execute('COMMIT');await blocker.close();
+    expect(await outcome,true);expect(await r.recordSale(sale),false);
+    expect(objects(r.state['events']).where((e)=>e['id']==sale['id']).length,1);
+    expect(validateState(r.state).book.stock('locked-product-001'),2);expect(r.state['lastPayment'],'card');
+    await r.close();
+  });
+  test('stale repository still cannot overwrite a newer revision',()async{
+    final first=await Repository.open(),stale=await Repository.open();
+    final next=clone(first.state);next['businessName']='Newest records';await first.save(next);
+    final old=clone(stale.state);old['businessName']='Stale records';
+    await expectLater(stale.save(old),throwsStateError);
+    await first.close();await stale.close();
+    final reopened=await Repository.open();expect(reopened.state['businessName'],'Newest records');await reopened.close();
+  });
+
 }
