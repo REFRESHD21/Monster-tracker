@@ -74,7 +74,7 @@ for attempt in $(seq 1 5); do
   timeout 20s adb shell uiautomator dump /sdcard/business-upgrade-inventory.xml >/dev/null 2>&1 || true
   adb exec-out cat /sdcard/business-upgrade-inventory.xml > device-evidence/direct-release-inventory-ui.xml || true
   if grep -Fq 'Units on hand' device-evidence/direct-release-inventory-ui.xml; then break; fi
-  adb shell input swipe 500 1500 500 400 450
+  adb shell input swipe 100 500 100 120 500
 done
 python3 - <<'CHECK'
 import xml.etree.ElementTree as ET,re
