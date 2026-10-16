@@ -41,7 +41,8 @@ List<Obj> retailerOfferRecords(Obj state) => objects(state['retailerOffers'] ?? 
 Map<String, int> customerBalances(Obj state) {
   final sales = <String, int>{};
   final linked = <String, Set<String>>{};
-  final undone = objects(state['events'] ?? const <dynamic>[])
+  final events = objects(state['events'] ?? const <dynamic>[]);
+  final undone = events
       .where((e) => e['type'] == 'undo')
       .map((e) => e['target'] as String?)
       .whereType<String>()
@@ -55,8 +56,10 @@ Map<String, int> customerBalances(Obj state) {
     sales[customerId] = (sales[customerId] ?? 0) + integer(event['revenue']);
     (linked[customerId] ??= <String>{}).add(event['id'] as String);
   }
-  for (final event in objects(state['events'] ?? const <dynamic>[])) {
-    if (event['type'] != 'refund' || event['target'] is! String) continue;
+  for (final event in events) {
+    if (event['type'] != 'refund' ||
+        event['target'] is! String ||
+        undone.contains(event['id'])) continue;
     for (final customerId in linked.keys) {
       if (linked[customerId]!.contains(event['target'])) {
         sales[customerId] = (sales[customerId] ?? 0) - integer(event['revenue']);
@@ -169,9 +172,12 @@ List<Obj> budgetRestockPlan(
     final need = minimum > stock ? minimum - stock : 0;
     if (need == 0) continue;
     final productOffers = offersForProduct({'retailerOffers': offers}, id);
-    final unitCost = productOffers.isNotEmpty
-        ? integer(productOffers.first['unitCost'])
-        : integer(product['purchaseCost']);
+    final offer = productOffers.isEmpty ? null : productOffers.first;
+    final unitCost = offer == null
+        ? integer(product['purchaseCost'])
+        : integer(offer['unitCost']);
+    final packQuantity = offer == null ? 1 : integer(offer['packQuantity'], 1);
+    final packCost = offer == null ? unitCost : integer(offer['priceCents'], 1);
     needs.add(<String, dynamic>{
       'productId': id,
       'name': product['name'],
@@ -179,7 +185,14 @@ List<Obj> budgetRestockPlan(
       'minimum': minimum,
       'needed': need,
       'unitCost': unitCost,
-      'costSource': productOffers.isNotEmpty ? 'manual retailer offer' : 'recorded purchase cost',
+      'packQuantity': packQuantity,
+      'packCost': packCost,
+      'costKnown': packCost > 0,
+      'costSource': offer != null
+          ? 'manual retailer pack offer'
+          : packCost > 0
+              ? 'recorded per-can purchase cost'
+              : 'missing cost',
       'urgency': minimum == 0 ? 1.0 : stock / minimum,
     });
   }
@@ -189,15 +202,26 @@ List<Obj> budgetRestockPlan(
   });
   var remaining = budgetCents;
   return needs.map((need) {
-    final unitCost = need['unitCost'] as int;
-    final affordable = unitCost == 0 ? need['needed'] as int : remaining ~/ unitCost;
-    final planned = (need['needed'] as int) < affordable ? need['needed'] as int : affordable;
-    final cost = planned * unitCost;
+    final packQuantity = need['packQuantity'] as int;
+    final packCost = need['packCost'] as int;
+    final requiredPacks = (need['needed'] as int) == 0
+        ? 0
+        : ((need['needed'] as int) + packQuantity - 1) ~/ packQuantity;
+    final affordablePacks = packCost == 0 ? 0 : remaining ~/ packCost;
+    final plannedPacks = requiredPacks < affordablePacks
+        ? requiredPacks
+        : affordablePacks;
+    final planned = plannedPacks * packQuantity;
+    final cost = plannedPacks * packCost;
     remaining -= cost;
     return <String, dynamic>{
       ...need,
+      'plannedPacks': plannedPacks,
       'planned': planned,
-      'estimatedCost': cost,
+      'overbuy': planned > (need['needed'] as int)
+          ? planned - (need['needed'] as int)
+          : 0,
+      'estimatedCost': need['costKnown'] == true ? cost : null,
       'budgetLimited': planned < (need['needed'] as int),
     };
   }).toList();
