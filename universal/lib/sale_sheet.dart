@@ -70,7 +70,13 @@ class _SaleSheetState extends State<SaleSheet> {
       }
       if(payment=='iou')e['customerId']=customerId;
       e['recordedAt']=recordedAt;
-      e['productName']=widget.cartLines==null?widget.bundle?['name'] ?? productLabel(widget.product):widget.cartLines!.map((line)=>'${line['quantity']} × ${line['name']}').join(', ');
+      if(widget.cartLines!=null){
+        e['productName']=widget.cartLines!.map((line)=>'${line['quantity']} × ${line['name']}').join(', ');
+      }else if(widget.bundle!=null){
+        e['productName']=widget.bundle!['name'];
+      }else{
+        e['productName']=productLabel(widget.product);
+      }
       e['saleOption']=mode;
       await widget.onSave(e,receipt);
       saved=true;

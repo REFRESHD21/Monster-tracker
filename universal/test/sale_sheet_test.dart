@@ -53,8 +53,8 @@ void main(){
     addTearDown(t.view.resetPhysicalSize);addTearDown(t.view.resetDevicePixelRatio);
     await t.pumpWidget(MaterialApp(home:Scaffold(body:Builder(builder:(c)=>TextButton(onPressed:()=>showModalBottomSheet<bool>(context:c,isScrollControlled:true,builder:(_)=>SaleSheet(product:cartProduct,cartLines:lines,stock:100,payment:'cash',onSave:(e,a)async{saved=e;},pickReceipt:()async=>null)),child:const Text('Open cart'))))));
     await t.tap(find.text('Open cart'));await t.pumpAndSettle();
-    expect(find.text('1 × Starter set · $5.00'),findsOneWidget);
-    expect(find.text('2 × Extra item · $7.00'),findsOneWidget);
+    expect(find.text('1 × Starter set · \$5.00'),findsOneWidget);
+    expect(find.text('2 × Extra item · \$7.00'),findsOneWidget);
     await t.tap(find.byKey(const ValueKey('confirm-sale')));await t.pumpAndSettle();
     expect(saved!['revenue'],1200);
     expect(saved!['bundleId'],'cart-bundle-001');
