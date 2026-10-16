@@ -86,7 +86,7 @@ void main() {
     expect(summary['cogs']+summary['losses']+summary['inventoryValue'],5000);
     final saleLots=accounts.history['fixture-deal-00001']!.lots;
     expect(saleLots.fold<int>(0,(sum,lot)=>sum+lot.cost),416);
-    expect(accounts.history['fixture-transfer-01']!.rows.fold<int>(0,(sum,row)=>sum+row['revenue'] as int),0);
+    expect(accounts.history['fixture-transfer-01']!.rows.fold<int>(0,(sum,row)=>sum+(row['revenue'] as int)),0);
     final projection=accounts.salesProfit(objects(repo.state['products']));
     expect(projection['revenue'],1800);
     expect(projection['profit'],552);
@@ -109,6 +109,8 @@ void main() {
     await tester.pumpAndSettle();
 
     await tester.tap(find.descendant(of:find.byType(NavigationBar),matching:find.text('Products')));
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(Scrollable).first,const Offset(0,1200));
     await tester.pumpAndSettle();
     await tester.tap(find.text('Archived products'));
     await tester.pumpAndSettle();
