@@ -188,8 +188,16 @@ class _BusinessModuleScreenState extends State<BusinessModuleScreen> {
       if(plan.isEmpty)const Card(child:Padding(padding:EdgeInsets.all(16),child:Text('No products are below their minimum-stock level.'))),
       for(final item in plan)Card(child:ListTile(
         title:Text(item['name'] as String),
-        subtitle:Text('On hand ${item['stock']} · minimum ${item['minimum']} · need ${item['needed']}\nPlan ${item['planned']} · ${item['costSource']} · ${item['budgetLimited']==true?'budget-limited':'within budget'}'),
-        trailing:Text(money(item['estimatedCost'])),
+        subtitle:Text(
+          'On hand ' + item['stock'].toString() + ' · minimum ' + item['minimum'].toString() + ' · need ' + item['needed'].toString() + '\n' +
+          (item['packQuantity'] > 1
+              ? 'Plan ' + item['planned'].toString() + ' cans (' + item['plannedPacks'].toString() + ' × ' + item['packQuantity'].toString() + '-pack)'
+              : 'Plan ' + item['planned'].toString() + ' cans') +
+          (item['overbuy'] > 0 ? ' · ' + item['overbuy'].toString() + ' extra' : '') +
+          ' · ' + (item['costSource'] as String) +
+          ' · ' + (item['budgetLimited'] == true ? 'budget-limited' : 'within budget'),
+        ),
+        trailing:Text(item['estimatedCost'] is int ? money(item['estimatedCost']) : 'Cost unknown'),
       )),
     ];
   }
