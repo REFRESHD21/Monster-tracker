@@ -20,7 +20,8 @@ void main() {
       databaseFactory = databaseFactoryFfiNoIsolate;
       final folder = await Directory.systemTemp.createTemp('tracker-modules-ui-');
       await databaseFactory.setDatabasesPath(folder.path);
-      final repo = await Repository.open();
+      var repo = await Repository.open();
+      var repoClosed = false;
       try {
         await tester.pumpWidget(TrackerApp(repository: repo));
         await tester.pumpAndSettle();
@@ -80,16 +81,19 @@ void main() {
           expect(find.text(moduleNames[other]!), findsOneWidget);
         }
 
-        await repo.save(repo.state);
-        final restored = await repo.reload();
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+        await repo.close();
+        repoClosed = true;
+        repo = await Repository.open();
         for (final key in moduleKeys) {
-          expect(moduleEnabled(restored, key), key != disabled);
+          expect(moduleEnabled(repo.state, key), key != disabled);
         }
         expect(tester.takeException(), isNull);
       } finally {
         await tester.pumpWidget(const SizedBox());
         await tester.pumpAndSettle();
-        await repo.close();
+        if (!repoClosed) await repo.close();
         await folder.delete(recursive: true);
       }
     });
