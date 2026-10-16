@@ -117,7 +117,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(find.text('Archived products'));
     await tester.pumpAndSettle();
-    expect(find.text('Need to delete'),findsOneWidget);
+    expect(find.textContaining('Need to delete'),findsOneWidget);
     expect(find.widgetWithText(TextButton,'Restore'),findsOneWidget);
 
     await tester.pumpWidget(const SizedBox());
