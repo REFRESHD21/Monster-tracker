@@ -101,16 +101,75 @@ void main() {
     expect(objects(salesForecast(limited,horizonDays:7,now:now)['products']).single['forecastUnits'],isNull);
   });
 
-  test('budget restock tops up only to minimum and never exceeds budget',(){
-    final products=[product('restock-urgent-01',minimum:5,cost:100),product('restock-slow-001',minimum:3,cost:400),product('restock-archived-01',minimum:9,cost:50,archived:true)];
-    final offers=[{'id':'offer-restock-01','productId':'restock-urgent-01','retailer':'Local store','location':'','packQuantity':4,'priceCents':280,'observedAt':10,'source':'manual'}];
-    final plan=budgetRestockPlan(products,{'restock-urgent-01':1,'restock-slow-001':2,'restock-archived-01':0},offers,budgetCents:210);
+  test('budget restock respects whole packs, budgets, missing cost and archived products',(){
+    final products=[
+      product('restock-urgent-01',minimum:4,cost:100),
+      product('restock-slow-001',minimum:3,cost:400),
+      product('restock-archived-01',minimum:9,cost:50,archived:true),
+    ];
+    final offers=[{
+      'id':'offer-restock-01',
+      'productId':'restock-urgent-01',
+      'retailer':'Local store',
+      'location':'',
+      'packQuantity':4,
+      'priceCents':280,
+      'observedAt':10,
+      'source':'manual',
+    }];
+    final plan=budgetRestockPlan(
+      products,
+      {'restock-urgent-01':0,'restock-slow-001':2,'restock-archived-01':0},
+      offers,
+      budgetCents:210,
+    );
     expect(plan.map((p)=>p['productId']),['restock-urgent-01','restock-slow-001']);
     expect(plan.first['needed'],4);
-    expect(plan.first['planned'],3);
-    expect(plan.first['estimatedCost'],210);
+    expect(plan.first['packQuantity'],4);
+    expect(plan.first['plannedPacks'],0);
+    expect(plan.first['planned'],0);
+    expect(plan.first['estimatedCost'],0);
     expect(plan.first['budgetLimited'],isTrue);
-    expect(plan.fold<int>(0,(sum,p)=>sum+(p['estimatedCost'] as int)),lessThanOrEqualTo(210));
-    expect(plan.any((p)=>p['productId']=='restock-archived-01'),isFalse);
+
+    final funded=budgetRestockPlan(
+      products,
+      {'restock-urgent-01':0,'restock-slow-001':2},
+      offers,
+      budgetCents:280,
+    );
+    expect(funded.first['plannedPacks'],1);
+    expect(funded.first['planned'],4);
+    expect(funded.first['overbuy'],0);
+    expect(funded.first['estimatedCost'],280);
+
+    final overbuy=budgetRestockPlan(
+      [product('restock-overbuy-01',minimum:5,cost:100)],
+      {'restock-overbuy-01':0},
+      [{
+        'id':'offer-overbuy-01',
+        'productId':'restock-overbuy-01',
+        'retailer':'Local store',
+        'location':'',
+        'packQuantity':4,
+        'priceCents':280,
+        'observedAt':10,
+        'source':'manual',
+      }],
+      budgetCents:560,
+    );
+    expect(overbuy.single['planned'],8);
+    expect(overbuy.single['overbuy'],3);
+    expect(overbuy.single['estimatedCost'],560);
+
+    final missingCost=budgetRestockPlan(
+      [product('restock-unknown-01',minimum:2,cost:0)],
+      {'restock-unknown-01':0},
+      const [],
+      budgetCents:1000,
+    );
+    expect(missingCost.single['costKnown'],isFalse);
+    expect(missingCost.single['estimatedCost'],isNull);
+    expect(missingCost.single['planned'],0);
+    expect(missingCost.single['costSource'],'missing cost');
   });
 }
