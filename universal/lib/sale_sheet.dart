@@ -83,7 +83,7 @@ class _SaleSheetState extends State<SaleSheet> {
           const SizedBox(width:12),Expanded(child:input(total,'Total (AUD)',changed:(_)=>setState((){editedTotal=true;mode='custom';}))),
         ]),
         const Text('Payment recorded'),
-        Wrap(spacing:12,children:[for(final p in ['cash','card',if(widget.customers.isNotEmpty)'iou'])ChoiceChip(label:Text(p=='cash'?'Cash':p=='card'?'Card / bank':'IOU'),selected:payment==p,onSelected:(_)=>setState(()=>{payment=p;if(p=='iou')fee.text='0.00';}))]),
+        Wrap(spacing:12,children:[for(final p in ['cash','card',if(widget.customers.isNotEmpty)'iou'])ChoiceChip(label:Text(p=='cash'?'Cash':p=='card'?'Card / bank':'IOU'),selected:payment==p,onSelected:(_)=>setState((){payment=p;if(p=='iou')fee.text='0.00';}))]),
         if(payment=='iou')...[
           DropdownButtonFormField<String>(value:customerId,decoration:const InputDecoration(labelText:'Customer'),items:[for(final customer in widget.customers)DropdownMenuItem(value:customer['id'] as String,child:Text(customer['name'] as String))],onChanged:(value)=>setState(()=>customerId=value)),
           const Text('This completed sale is recorded in sales revenue and the customer’s outstanding balance. Payments received later do not create new sales.'),
