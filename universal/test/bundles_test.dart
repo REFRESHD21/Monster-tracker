@@ -155,7 +155,10 @@ void main() {
     expect(second.newBundles, isEmpty);
     expect(second.unchanged.length, 2);
     final edited = clone(imported)..['products'][0]['sellingPrice'] = 700;
-    expect(reviewCatalogue(edited, catalogue).conflicts, isNotEmpty);
+    final update = reviewCatalogue(edited, catalogue);
+    expect(update.updates, isNotEmpty);
+    expect(applyCatalogue(edited, update)['products'][0]['sellingPrice'], 700);
+    expect(applyCatalogue(edited, update, applyUpdates: true)['products'][0]['sellingPrice'], isNull);
   });
 
   test('NUA external example imports five products and two component bundles without stock/cost', () async {

@@ -84,7 +84,10 @@ Obj bundleSaleEvent({
   final allocations = totals.entries
       .map((entry) => {'productId': entry.key, 'quantity': entry.value})
       .toList();
-  final physicalQuantity = allocations.fold<int>(0, (sum, row) => sum + row['quantity'] as int);
+  final physicalQuantity = allocations.fold<int>(
+    0,
+    (sum, row) => sum + (row['quantity'] as int),
+  );
   return <String, dynamic>{
     'id': id,
     'type': 'sale',
@@ -118,17 +121,25 @@ Obj bundleSaleEvent({
 class CatalogueReview {
   final List<Obj> newProducts;
   final List<Obj> newBundles;
+  final List<Obj> productUpdates;
+  final List<Obj> bundleUpdates;
   final List<String> unchanged;
   final List<String> conflicts;
   final List<String> errors;
   const CatalogueReview({
     required this.newProducts,
     required this.newBundles,
+    required this.productUpdates,
+    required this.bundleUpdates,
     required this.unchanged,
     required this.conflicts,
     required this.errors,
   });
   bool get canImport => errors.isEmpty && conflicts.isEmpty;
+  List<String> get updates => [
+    for (final p in productUpdates) 'Update product ${p['name']} (${p['id']})',
+    for (final b in bundleUpdates) 'Update bundle ${b['name']} (${b['id']})',
+  ];
 }
 
 CatalogueReview reviewCatalogue(Obj state, String text) {
@@ -139,10 +150,11 @@ CatalogueReview reviewCatalogue(Obj state, String text) {
     throw const FormatException('Unsupported catalogue format or currency.');
   }
   final errors = <String>[], conflicts = <String>[], unchanged = <String>[];
-  final newProducts = <Obj>[], newBundles = <Obj>[];
+  final newProducts = <Obj>[], newBundles = <Obj>[], productUpdates=<Obj>[], bundleUpdates=<Obj>[];
   final productIds = <String>{}, bundleIds = <String>{};
   final existingProducts = {for (final p in objects(state['products'])) p['id'] as String: p};
   final existingBundles = {for (final b in bundleRecords(state)) b['id'] as String: b};
+  final usedBarcodes=<String,String>{for(final p in objects(state['products'])) if((p['barcode'] as String? ?? '').isNotEmpty) p['barcode'] as String:p['id'] as String};
   final products = objects(root['products']);
   final bundles = objects(root['bundles']);
   if (products.length > 10000 || bundles.length > 10000) {
@@ -154,17 +166,20 @@ CatalogueReview reviewCatalogue(Obj state, String text) {
       if (id.isEmpty || name.isEmpty || !productIds.add(id)) throw const FormatException('Invalid or duplicate product ID/name.');
       string(p['category'], 80);
       string(p['variant'], 120);
-      if (p['barcode'] != '' || p['archived'] is! bool || p['minimum'] != 0 || p['purchaseCost'] != null || p['sellingPrice'] != null || p['twoItemPrice'] != null) {
-        throw const FormatException('Catalogue products must have empty barcodes, zero minimum and unknown prices/costs.');
-      }
-      if (p['photo'] != null) verifyAttachment(obj(p['photo']));
+      final barcode=string(p['barcode'],80);
+      if (p['archived'] is! bool) throw const FormatException('Invalid product archive setting.');
+      integer(p['minimum']);
+      for(final key in ['purchaseCost','sellingPrice','twoItemPrice']) {if(p[key]!=null)integer(p[key],key=='twoItemPrice'?1:0);}
+      if(p.containsKey('stock')||p.containsKey('stockQuantity')||p.containsKey('quantity'))throw const FormatException('Catalogue import cannot set inventory quantities.');
+      if (p['photo'] != null) {verifyAttachment(obj(p['photo']));if(p['photo']['mime']=='application/pdf')throw const FormatException('Product photos must be JPG or PNG images.');}
+      if(barcode.isNotEmpty){final owner=usedBarcodes[barcode];if(owner!=null&&owner!=id)throw FormatException('Barcode $barcode already belongs to another product.');usedBarcodes[barcode]=id;}
       final old = existingProducts[id];
       if (old == null) {
         newProducts.add(p);
       } else if (canonical(old) == canonical(p)) {
         unchanged.add('Product $name already exists.');
       } else {
-        conflicts.add('Product ID $id already exists with different data; it will not be overwritten.');
+        productUpdates.add(p);
       }
     } on Object catch (e) {
       errors.add('Product: $e');
@@ -176,7 +191,8 @@ CatalogueReview reviewCatalogue(Obj state, String text) {
       final id = string(b['id'], 100), name = string(b['name'], 120).trim();
       if (id.isEmpty || name.isEmpty || !bundleIds.add(id) || existingProducts.containsKey(id) || productIds.contains(id)) throw const FormatException('Invalid, duplicate or colliding bundle ID/name.');
       string(b['category'], 80);
-      if (b['description'] is! String || b['sellingPrice'] != null || b['archived'] is! bool) throw const FormatException('Bundle must have no preset price and a valid archive state.');
+      if (b['description'] is! String || b['archived'] is! bool) throw const FormatException('Invalid bundle metadata.');
+      if (b['sellingPrice'] != null) integer(b['sellingPrice'],1);
       if (b['photo'] != null) {verifyAttachment(obj(b['photo']));if(b['photo']['mime']=='application/pdf')throw const FormatException('Bundle photos must be JPG or PNG images.');}
       final components = objects(b['components']);
       if (components.isEmpty) throw const FormatException('Bundle needs at least one component.');
@@ -193,21 +209,22 @@ CatalogueReview reviewCatalogue(Obj state, String text) {
       } else if (canonical(old) == canonical(b)) {
         unchanged.add('Bundle $name already exists.');
       } else {
-        conflicts.add('Bundle ID $id already exists with different data; it will not be overwritten.');
+        bundleUpdates.add(b);
       }
     } on Object catch (e) {
       errors.add('Bundle: $e');
     }
   }
-  return CatalogueReview(newProducts: newProducts, newBundles: newBundles, unchanged: unchanged, conflicts: conflicts, errors: errors);
+  return CatalogueReview(newProducts: newProducts, newBundles: newBundles, productUpdates:productUpdates,bundleUpdates:bundleUpdates,unchanged: unchanged, conflicts: conflicts, errors: errors);
 }
 
-Obj applyCatalogue(Obj state, CatalogueReview review) {
+Obj applyCatalogue(Obj state, CatalogueReview review, {bool applyUpdates=false}) {
   if (!review.canImport) throw const FormatException('Resolve catalogue conflicts or errors before importing.');
   final next = clone(state);
   (next['products'] as List).addAll(review.newProducts.map(clone));
   final bundles=(next['bundles'] ??= <dynamic>[]) as List;
   bundles.addAll(review.newBundles.map(clone));
+  if(applyUpdates){for(final p in review.productUpdates){final i=(next['products'] as List).indexWhere((old)=>old['id']==p['id']);if(i>=0)(next['products'] as List)[i]=clone(p);}for(final b in review.bundleUpdates){final i=bundles.indexWhere((old)=>old['id']==b['id']);if(i>=0)bundles[i]=clone(b);}}
   return next;
 }
 
@@ -220,13 +237,13 @@ String exportCatalogue(Obj state) => const JsonEncoder.withIndent('  ').convert(
       'currency': 'AUD',
       'products': objects(state['products']).map((p) => <String, dynamic>{
         'id': p['id'], 'name': p['name'], 'variant': p['variant'],
-        'category': p['category'], 'barcode': '', 'archived': p['archived'] == true,
-        'minimum': 0, 'photo': p['photo'], 'purchaseCost': null,
-        'sellingPrice': null, 'twoItemPrice': null,
+        'category': p['category'], 'barcode': p['barcode'] ?? '', 'archived': p['archived'] == true,
+        'minimum': p['minimum'] ?? 0, 'photo': p['photo'], 'purchaseCost': p['purchaseCost'],
+        'sellingPrice': p['sellingPrice'], 'twoItemPrice': p['twoItemPrice'],
       }).toList(),
       'bundles': bundleRecords(state).map((b) => <String, dynamic>{
         'id': b['id'], 'name': b['name'], 'category': b['category'],
-        'description': b['description'] ?? '', 'sellingPrice': null,
+        'description': b['description'] ?? '', 'sellingPrice': b['sellingPrice'],
         'photo': b['photo'], 'archived': b['archived'] == true,
         'components': objects(b['components']).map((c) => {'productId': c['productId'], 'quantity': c['quantity']}).toList(),
       }).toList(),

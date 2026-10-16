@@ -39,18 +39,20 @@ class _BundleManagementScreenState extends State<BundleManagementScreen> {
     late CatalogueReview review;
     try { review = reviewCatalogue(state, utf8.decode(bytes)); } catch (e) { if (mounted) await showDialog<void>(context: context, builder: (c) => AlertDialog(title: const Text('Catalogue could not be read'), content: Text('$e'), actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('Close'))])); return; }
     if (!mounted) return;
-    final yes = await showDialog<bool>(context: context, builder: (c) => AlertDialog(
+    var applyUpdates=false;
+    final yes = await showDialog<bool>(context: context, builder: (c) => StatefulBuilder(builder:(c,update)=>AlertDialog(
       title: const Text('Review catalogue import'),
       content: SizedBox(width: 480, child: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-        Text('${review.newProducts.length} new products · ${review.newBundles.length} new bundles · ${review.unchanged.length} unchanged'),
-        const Text('Updates: 0. Existing product or bundle IDs are never overwritten by catalogue import.'),
-        if (review.conflicts.isNotEmpty) ...[const Text('Conflicts (never overwritten):'), for (final error in review.conflicts) Text(error)],
+        Text('${review.newProducts.length} new products · ${review.newBundles.length} new bundles · ${review.updates.length} updates · ${review.unchanged.length} unchanged'),
+        if(review.updates.isNotEmpty)CheckboxListTile(contentPadding:EdgeInsets.zero,value:applyUpdates,onChanged:(v)=>update(()=>applyUpdates=v??false),title:const Text('Apply listed product and bundle changes'),subtitle:const Text('Historical ledger entries and stock are never changed.'),controlAffinity:ListTileControlAffinity.leading),
+        for(final item in review.updates)Text(item),
+        if (review.conflicts.isNotEmpty) ...[const Text('Conflicts:'), for (final error in review.conflicts) Text(error)],
         if (review.errors.isNotEmpty) ...[const Text('Errors:'), for (final error in review.errors) Text(error)],
         const Text('Catalogue import adds definitions only. It does not add stock, purchases, sales or costs.'),
       ]))),
-      actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')), if (review.canImport && (review.newProducts.isNotEmpty || review.newBundles.isNotEmpty)) FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('Import additions'))],
-    ));
-    if (yes == true && mounted) await persist(applyCatalogue(state, review));
+      actions: [TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('Cancel')), if (review.canImport && (review.newProducts.isNotEmpty || review.newBundles.isNotEmpty || applyUpdates)) FilledButton(onPressed: () => Navigator.pop(c, true), child: Text(applyUpdates?'Import additions and confirmed updates':'Import additions'))],
+    )));
+    if (yes == true && mounted) await persist(applyCatalogue(state, review,applyUpdates:applyUpdates));
   }
 
   Future<void> exportCatalogueFile() async {

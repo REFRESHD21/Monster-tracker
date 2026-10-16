@@ -7,6 +7,7 @@ import 'package:path/path.dart' as path;
 import 'package:business_tracker/core/codec.dart';
 import 'package:business_tracker/core/engine.dart';
 import 'package:business_tracker/core/bundles.dart';
+import 'package:business_tracker/core/legacy.dart';
 import 'package:business_tracker/services/repository.dart';
 import 'package:business_tracker/core/purchases.dart';
 import 'package:business_tracker/core/stocktakes.dart';

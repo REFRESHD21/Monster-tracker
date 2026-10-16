@@ -104,7 +104,6 @@ Obj mergeBackup(Obj current, Obj incoming) {
     for(final bundle in objects(current['bundles'] ?? const <dynamic>[])) {
       final existing=restoredBundles[bundle['id']];
       if(existing==null) {(restored['bundles'] as List).add(clone(bundle));}
-      else if(canonical(existing)!=canonical(bundle)) throw const FormatException('Conflicting bundle definition. Restore was not applied.');
     }
     // A 2.0.0 backup predates these preferences; absence must not reset them
     // when importing into this same business. Explicit new values still restore.
