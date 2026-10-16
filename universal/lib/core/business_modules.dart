@@ -57,7 +57,7 @@ Map<String, int> customerBalances(Obj state) {
     (linked[customerId] ??= <String>{}).add(event['id'] as String);
   }
   for (final event in events) {
-    if (event['type'] != 'refund' || event['target'] is! String) continue;
+    if (event['type'] != 'refund' || event['target'] is! String || undone.contains(event['id'])) continue;
     for (final customerId in linked.keys) {
       if (linked[customerId]!.contains(event['target'])) {
         sales[customerId] = (sales[customerId] ?? 0) - integer(event['revenue']);
