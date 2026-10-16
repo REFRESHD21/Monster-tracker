@@ -115,11 +115,13 @@ Obj salesForecast(Obj state, {required int horizonDays, required int now}) {
   }
   final counts=<String,int>{}, revenues=<String,int>{}, saleDays=<int>{};
   for(final sale in saleEvents) {
-    final saleId=sale['id'] as String, date=sale['date'] as int;
+    final saleId=sale['id'] as String;
+    final date=sale['date'] as int;
     saleDays.add(date~/dayMs);
-    final quantity=integer(sale['quantity'],1), refund=(refunds[saleId]??0).clamp(0,integer(sale['revenue']));
-    final netRevenue=integer(sale['revenue'])-refund;
-    var returnLeft=(returns[saleId]??0).clamp(0,quantity), before=0, revenueDistributed=0;
+    final int quantity=integer(sale['quantity'],1);
+    final int refund=(refunds[saleId]??0).clamp(0,integer(sale['revenue'])) as int;
+    final int netRevenue=integer(sale['revenue'])-refund;
+    int returnLeft=(returns[saleId]??0).clamp(0,quantity) as int, before=0, revenueDistributed=0;
     final allocations=objects(sale['allocations']);
     for(var i=0;i<allocations.length;i++) {
       final allocation=allocations[i], q=integer(allocation['quantity'],1);
@@ -134,7 +136,7 @@ Obj salesForecast(Obj state, {required int horizonDays, required int now}) {
   }
   final daysSorted=saleDays.toList()..sort();
   final spanDays=daysSorted.isEmpty?0:daysSorted.last-daysSorted.first+1;
-  final observedDays=daysSorted.isEmpty?0:((now-windowStart)~/dayMs).clamp(1,30);
+  final int observedDays=daysSorted.isEmpty?0:((now-windowStart)~/dayMs).clamp(1,30) as int;
   final enough=saleEvents.length>=3 && spanDays>=7 && observedDays>=7;
   final products=<Obj>[];
   for(final product in objects(state['products']??const <dynamic>[])) {
