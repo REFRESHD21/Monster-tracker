@@ -34,6 +34,7 @@ void main() {
           await tester.pumpAndSettle();
         }
 
+        final enabled = <String>{};
         for (final key in moduleKeys) {
           final toggle = find.byKey(ValueKey('module-toggle-' + key));
           await openSettings();
@@ -43,9 +44,13 @@ void main() {
           await tester.pump();
           await tester.pumpAndSettle();
 
-          expect(moduleEnabled(repo.state, key), isTrue, reason: key);
-          for (final other in moduleKeys.where((candidate) => candidate != key)) {
-            expect(moduleEnabled(repo.state, other), isFalse, reason: '$key changed $other');
+          enabled.add(key);
+          for (final candidate in moduleKeys) {
+            expect(
+              moduleEnabled(repo.state, candidate),
+              enabled.contains(candidate),
+              reason: '$key unexpectedly changed $candidate',
+            );
           }
         }
 
