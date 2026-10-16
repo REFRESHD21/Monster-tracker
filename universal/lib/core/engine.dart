@@ -1,10 +1,11 @@
 import 'dart:convert';
 import 'codec.dart';
 import 'purchases.dart';
+import 'business_modules.dart';
 
 const legacyProduct = 'legacy-unassigned';
 const themes = ['light', 'dark', 'green', 'ocean', 'purple', 'warm neutral'];
-Obj emptyState() => {'format': 'business-tracker', 'version': 1, 'currency': 'AUD', 'timeZone': 'Australia/Perth', 'businessId': '', 'businessName': 'My business', 'theme': 'green', 'products': <dynamic>[], 'events': <dynamic>[], 'attachments': <dynamic>[], 'stocktakes': <dynamic>[], 'legacy': null, 'legacyCount': 0};
+Obj emptyState() => {'format': 'business-tracker', 'version': 1, 'currency': 'AUD', 'timeZone': 'Australia/Perth', 'businessId': '', 'businessName': 'My business', 'theme': 'green', 'products': <dynamic>[], 'events': <dynamic>[], 'attachments': <dynamic>[], 'stocktakes': <dynamic>[], 'modules': <String,dynamic>{}, 'customers': <dynamic>[], 'customerPayments': <dynamic>[], 'retailerOffers': <dynamic>[], 'legacy': null, 'legacyCount': 0};
 class Lot {
   final String key, product; final int age; int quantity, cost;
   Lot(this.key, this.product, this.age, this.quantity, this.cost);
@@ -24,7 +25,7 @@ class Book {
   int get value => lots.values.fold(0, (s, l) => s + l.cost);
   int stock(String product) => lots.values.where((l) => l.product == product).fold(0, (s, l) => s + l.quantity);
 }
-const sums = ['revenue','cash','card','fees','purchases','expenses','cogs','losses','outputGst','inputGst'];
+const sums = ['revenue','cash','card','iou','fees','purchases','expenses','cogs','losses','outputGst','inputGst'];
 Obj row(Obj e, String? p, [String? kind]) => {'id': e['id'], 'kind': kind ?? e['type'], 'date': e['date'], 'productId': p, 'note': e['note'], for (final k in sums) k: 0};
 int share(int total, int before, int q, int all) => total * (before + q) ~/ all - total * before ~/ all;
 int costOf(List<Lot> lots) => lots.fold(0, (s, l) => s + l.cost);
@@ -164,7 +165,7 @@ Accounts calculate(List<Obj> events) {
       final allocations = objects(e['allocations']);
       if (q < 1 || allocations.isEmpty || allocations.fold<int>(0, (s,a) => s + integer(a['quantity'],1,10000)) != q || allocations.map((a)=>a['productId']).toSet().length != allocations.length) throw const FormatException('Invalid product quantities.');
       final sale = ['single','deal','sale'].contains(type);
-      if(sale && (!['cash','card'].contains(e['payment']) || cost != 0 || fee > revenue || e['payment'] == 'cash' && fee != 0)) throw const FormatException('Invalid payment or fee.');
+      if(sale && (!['cash','card','iou'].contains(e['payment']) || cost != 0 || fee > revenue || e['payment'] == 'cash' && fee != 0 || e['payment'] == 'iou' && fee != 0)) throw const FormatException('Invalid payment or fee.');
       if(!sale && (revenue != 0 || fee != 0 || e['payment'] != 'none' || type != 'restock' && cost != 0)) throw const FormatException('Invalid stock adjustment.');
       int before = 0;
       for(final a in allocations) {
@@ -241,6 +242,8 @@ Accounts validateState(Obj s) {
   if(string(s['businessName'],120).trim().isEmpty) throw const FormatException('Enter a business name.');
   if(s['lastPayment'] != null && !['cash','card'].contains(s['lastPayment'])) throw const FormatException('Invalid saved payment method.');
   if((s['events'] as List).length>100000 || (s['products'] as List).length>10000 || (s['attachments'] as List).length>100000)throw const FormatException('History limit reached. Export a full backup before adding more records.');
+  final flags=s['modules'];
+  if(flags!=null){if(flags is! Map<String,dynamic> || flags.keys.any((k)=>!moduleKeys.contains(k)) || flags.values.any((v)=>v is! bool))throw const FormatException('Invalid optional module settings.');}
   final products = <String>{}, barcodes = <String>{};
   for(final p in objects(s['products'])) {
     if(!products.add(string(p['id'],100)) || string(p['name'],120).trim().isEmpty) throw const FormatException('Invalid product identity.');
@@ -251,7 +254,13 @@ Accounts validateState(Obj s) {
     final barcode=string(p['barcode'],80);if(barcode.isNotEmpty && !barcodes.add(barcode)) throw const FormatException('Barcode already belongs to another product.');
     if(p['photo'] != null){verifyAttachment(obj(p['photo']));if(p['photo']['mime']=='application/pdf')throw const FormatException('Product photos must be JPG or PNG images.');}
   }
-  for(final e in objects(s['events'])) { for(final a in objects(e['allocations'])) {if(!products.contains(a['productId'])) throw const FormatException('Unknown product in history.');} if(e['type']=='transfer' && (!products.contains(e['from']) || !products.contains(e['to']))) throw const FormatException('Unknown transfer product.'); }
+  final customerIds=<String>{};
+  for(final customer in objects(s['customers'] ?? const <dynamic>[])){final id=string(customer['id'],100);if(id.isEmpty || !customerIds.add(id) || string(customer['name'],120).trim().isEmpty)throw const FormatException('Invalid customer record.');if(customer['phone']!=null)string(customer['phone'],40);integer(customer['createdAt'],946684800000,4102444800000);}
+  final paymentIds=<String>{};
+  for(final payment in objects(s['customerPayments'] ?? const <dynamic>[])){final id=string(payment['id'],100);if(id.isEmpty || !paymentIds.add(id) || !customerIds.contains(payment['customerId']))throw const FormatException('Invalid customer payment record.');integer(payment['amount'],1);integer(payment['date'],946684800000,4102444800000);string(payment['note'] ?? '',240);}
+  final offerIds=<String>{};
+  for(final offer in objects(s['retailerOffers'] ?? const <dynamic>[])){final id=string(offer['id'],100);if(id.isEmpty || !offerIds.add(id) || !products.contains(offer['productId']) || offer['source']!='manual')throw const FormatException('Invalid store price offer.');string(offer['retailer'],120);string(offer['location'] ?? '',120);integer(offer['packQuantity'],1,10000);integer(offer['priceCents'],1);integer(offer['observedAt'],946684800000,4102444800000);}
+  for(final e in objects(s['events'])) { for(final a in objects(e['allocations'])) {if(!products.contains(a['productId'])) throw const FormatException('Unknown product in history.');} if(e['type']=='transfer' && (!products.contains(e['from']) || !products.contains(e['to']))) throw const FormatException('Unknown transfer product.'); if(e['payment']=='iou' && (!['single','deal','sale'].contains(e['type']) || !customerIds.contains(e['customerId'])))throw const FormatException('IOU sales must reference a customer.');if(e['customerId']!=null && !customerIds.contains(e['customerId']))throw const FormatException('Sale references an unknown customer.'); }
   purchaseHistory(s);
   validateStocktakes(s);
   final ids=<String>{};for(final a in objects(s['attachments'])) {verifyAttachment(a,s);if(!ids.add(a['id'] as String)) throw const FormatException('Duplicate receipt.');}
