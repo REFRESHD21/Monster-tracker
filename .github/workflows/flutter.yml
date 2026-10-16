@@ -44,7 +44,7 @@ jobs:
       - working-directory: universal
         run: flutter test
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && github.ref != 'refs/heads/development/toggleable-business-modules'
         with:
           name: shared-test-source
           path: |
@@ -138,12 +138,13 @@ jobs:
           cp signing-verification.txt apk-verification.txt oauth-verification.txt dist/
           cd dist && sha256sum Business-Tracker-2.3.1.apk > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
+        if: github.ref != 'refs/heads/development/toggleable-business-modules'
         with:
           name: verified-android-update
           path: dist/
           retention-days: 30
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && github.ref != 'refs/heads/development/toggleable-business-modules'
         with:
           name: flutter-android-evidence
           path: |
@@ -169,7 +170,7 @@ jobs:
           set -o pipefail
           flutter build ios --release --no-codesign --dart-define=GOOGLE_IOS_CLIENT_ID=${{ vars.GOOGLE_IOS_CLIENT_ID }} --dart-define-from-file=config/google-oauth.json --verbose 2>&1 | tee ios-build.log
       - uses: actions/upload-artifact@v4
-        if: always()
+        if: always() && github.ref != 'refs/heads/development/toggleable-business-modules'
         with:
           name: ios-build-evidence
           path: |
