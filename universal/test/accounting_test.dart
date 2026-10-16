@@ -81,6 +81,17 @@ void main() {
     final s=importLegacy(canonical(c['backup']));expect(s['events'][0]['date'],null);expect(s['legacy'],c['backup']);expect(mergeBackup(s,s),s);
     final wrong=clone(s);wrong['events'][2]['cost']=12345;expect(()=>mergeBackup(s,wrong),throwsFormatException);
   });
+  test('archived stock stays in FIFO inventory but is excluded from sellable future estimates',(){
+    final archived={'id':'archived-product-001','name':'Historical flavour','category':'Drink','variant':'500 ml','purchaseCost':250,'sellingPrice':400,'minimum':0,'barcode':'','photo':null,'archived':true};
+    final events=[event(id:'archive-stock-001',type:'restock',quantity:2,productId:'archived-product-001',cost:500)];
+    final accounts=calculate(events),potential=accounts.salesProfit([archived]);
+    expect(accounts.book.stock('archived-product-001'),2);
+    expect(accounts.book.value,500);
+    expect(potential['futureRevenue'],0);
+    expect(potential['futureCost'],0);
+    expect(potential['futureProfit'],0);
+    expect(objects(potential['products']).single['remaining'],0);
+  });
   test('cents never round; six themes supported', () {expect(cents('12.01'),1201);expect(()=>cents('0.001'),throwsFormatException);expect(themes.length,6);});
 }
 Obj product() => {'id':'product-test-001','name':'Moisturiser','category':'Skincare','variant':'50 ml','purchaseCost':100,'sellingPrice':350,'minimum':5,'barcode':'0012345','photo':null};
