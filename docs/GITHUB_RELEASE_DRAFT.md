@@ -9,7 +9,7 @@
 - **Target:** `feature/flutter-universal-tracker` (replace with the approved release commit/tag before publishing)
 - **Package:** `au.monster.tracker.plus`
 - **Version:** 2.3.1 (version code 18)
-- **Assets:** `Business-Tracker-2.3.1.apk` and `SHA256SUMS.txt` from the same successful Actions run.
+- **Assets:** [Verified APK artifact from Actions run #68](https://github.com/REFRESHD21/Monster-tracker/actions/runs/38855799857/artifacts/12027279807), containing `Business-Tracker-2.3.1.apk` and `SHA256SUMS.txt`.
 - **Signing fingerprint:** `10195e6471ae52ad19633421aa4e50db9bf391fbbb15eb58016c41a6eef1c2dd` is the current CI compatibility certificate. It is not yet backed by an owner-controlled durable release key.
 
 ## Release notes draft
@@ -40,8 +40,8 @@ To restore, install the app, open **Settings → Import / restore backup**, choo
 
 ## Verification record to fill after the final CI run
 
-- CI run: **[URL]**
-- Commit: **[SHA]**
-- APK SHA-256: **[value from SHA256SUMS.txt]**
-- Emulator restore test: **[pass/fail and run link]**
-- Real owner backup restore: **not tested in this CI run**
+- CI run: [#68 — all jobs passed](https://github.com/REFRESHD21/Monster-tracker/actions/runs/38855799857)
+- App source commit: `442d6438174d99741d5f960d23224d1cf77ff66b`
+- APK SHA-256: `c54a3dda35f2726a32d502c51cd7498e8a4e5c57cd818629e4c0303d816876cd`
+- Emulator restore test: **passed** on the Android emulator using a synthetic, checksum-valid seven-event ledger. UI preview, confirmed restore, tamper rejection, archived product view and persistence after reopen passed.
+- Real owner backup restore: **not tested**; the actual backup was not available to this run.
