@@ -99,6 +99,13 @@ Obj mergeBackup(Obj current, Obj incoming) {
       if(replacement==null){(restored['products'] as List).add(p);}
       else {for(final key in ['archived','twoItemPrice']){if(!replacement.containsKey(key) && p.containsKey(key))replacement[key]=p[key];}}
     }
+    restored['bundles'] ??= <dynamic>[];
+    final restoredBundles={for(final b in objects(restored['bundles'])) b['id']:b};
+    for(final bundle in objects(current['bundles'] ?? const <dynamic>[])) {
+      final existing=restoredBundles[bundle['id']];
+      if(existing==null) {(restored['bundles'] as List).add(clone(bundle));}
+      else if(canonical(existing)!=canonical(bundle)) throw const FormatException('Conflicting bundle definition. Restore was not applied.');
+    }
     // A 2.0.0 backup predates these preferences; absence must not reset them
     // when importing into this same business. Explicit new values still restore.
     if(!restored.containsKey('lastPayment') && current.containsKey('lastPayment'))restored['lastPayment']=current['lastPayment'];

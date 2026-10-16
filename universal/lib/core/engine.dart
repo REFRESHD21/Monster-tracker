@@ -5,7 +5,7 @@ import 'business_modules.dart';
 
 const legacyProduct = 'legacy-unassigned';
 const themes = ['light', 'dark', 'green', 'ocean', 'purple', 'warm neutral'];
-Obj emptyState() => {'format': 'business-tracker', 'version': 1, 'currency': 'AUD', 'timeZone': 'Australia/Perth', 'businessId': '', 'businessName': 'My business', 'theme': 'green', 'products': <dynamic>[], 'events': <dynamic>[], 'attachments': <dynamic>[], 'stocktakes': <dynamic>[], 'modules': <String,dynamic>{}, 'customers': <dynamic>[], 'customerPayments': <dynamic>[], 'retailerOffers': <dynamic>[], 'legacy': null, 'legacyCount': 0};
+Obj emptyState() => {'format': 'business-tracker', 'version': 1, 'currency': 'AUD', 'timeZone': 'Australia/Perth', 'businessId': '', 'businessName': 'My business', 'theme': 'green', 'products': <dynamic>[], 'events': <dynamic>[], 'attachments': <dynamic>[], 'stocktakes': <dynamic>[], 'modules': <String,dynamic>{}, 'customers': <dynamic>[], 'customerPayments': <dynamic>[], 'retailerOffers': <dynamic>[], 'bundles': <dynamic>[], 'legacy': null, 'legacyCount': 0};
 class Lot {
   final String key, product; final int age; int quantity, cost;
   Lot(this.key, this.product, this.age, this.quantity, this.cost);
@@ -59,8 +59,7 @@ class Accounts {
       final p=earned[r['productId']]; if(p==null) continue;
       final e=history[r['id']]; final original=e?.e['type'];
       if (['single','deal','sale'].contains(original)) {final sale=e!;final sold=objects(sale.e['allocations']).where((a)=>a['productId']==r['productId']).fold<int>(0,(sum,a)=>sum+a['quantity'] as int);p['unitsSold']+=sold;units+=sold;
-        final configuredCost=productById[r['productId']]?['purchaseCost'] as int? ?? 0;
-        if(configuredCost>0)for(final lot in sale.lots.where((lot)=>lot.product==r['productId']&&lot.cost==0)){
+        for(final lot in sale.lots.where((lot)=>lot.product==r['productId']&&lot.cost==0)){
           final origin=history[lot.key.split('|').first];final originCost=origin?.lots.where((source)=>source.product==r['productId']).fold<int>(0,(sum,source)=>sum+source.cost) ?? 0;
           if(originCost==0){unknownEarnedByProduct[r['productId']]=(unknownEarnedByProduct[r['productId']]??0)+lot.quantity;(unknownBySale.putIfAbsent(sale.e['id'] as String,()=>{}))[r['productId']]=(unknownBySale[sale.e['id']]![r['productId']]??0)+lot.quantity;}
         }
@@ -75,7 +74,7 @@ class Accounts {
     for(final p in earned.values){p['profit']=(unknownEarnedByProduct[p['productId']]??0)>0?null:p['revenue']-p['cogs'];revenue+=p['revenue'] as int;cogs+=p['cogs'] as int;}
     final potential=<String,Obj>{};var futureRevenue=0,futureCost=0,unknownCosts=0,unknownPrices=0;
     for(final entry in earned.entries){
-      final p=productById[entry.key]!, archived=p['archived']==true, stock=archived?0:book.stock(entry.key), price=p['sellingPrice'] as int, remainingCost=archived?0:book.lots.values.where((l)=>l.product==entry.key).fold<int>(0,(sum,l)=>sum+l.cost);
+      final p=productById[entry.key]!, archived=p['archived']==true, stock=archived?0:book.stock(entry.key), price=(p['sellingPrice'] as int? ?? 0), remainingCost=archived?0:book.lots.values.where((l)=>l.product==entry.key).fold<int>(0,(sum,l)=>sum+l.cost);
       final unitsWithCost=book.lots.values.where((l)=>l.product==entry.key && l.quantity>0 && l.cost>0).fold<int>(0,(sum,l)=>sum+l.quantity);
       if(stock>unitsWithCost) unknownCosts += stock-unitsWithCost;
       if(price<=0 && stock>0)unknownPrices+=stock;
@@ -247,7 +246,7 @@ Accounts validateState(Obj s) {
   final products = <String>{}, barcodes = <String>{};
   for(final p in objects(s['products'])) {
     if(!products.add(string(p['id'],100)) || string(p['name'],120).trim().isEmpty) throw const FormatException('Invalid product identity.');
-    for(final k in ['purchaseCost','sellingPrice','minimum']) {integer(p[k]);}
+    for(final k in ['purchaseCost','sellingPrice']) {if(p[k]!=null)integer(p[k]);} integer(p['minimum']);
     if(p['twoItemPrice'] != null) integer(p['twoItemPrice'],1);
     if(p['archived'] != null && p['archived'] is! bool) throw const FormatException('Invalid product archive setting.');
     string(p['category'],80);string(p['variant'],120);
@@ -261,12 +260,41 @@ Accounts validateState(Obj s) {
   final offerIds=<String>{};
   for(final offer in objects(s['retailerOffers'] ?? const <dynamic>[])){final id=string(offer['id'],100);if(id.isEmpty || !offerIds.add(id) || !products.contains(offer['productId']) || offer['source']!='manual')throw const FormatException('Invalid store price offer.');string(offer['retailer'],120);string(offer['location'] ?? '',120);integer(offer['packQuantity'],1,10000);integer(offer['priceCents'],1);integer(offer['observedAt'],946684800000,4102444800000);}
   for(final e in objects(s['events'])) { for(final a in objects(e['allocations'])) {if(!products.contains(a['productId'])) throw const FormatException('Unknown product in history.');} if(e['type']=='transfer' && (!products.contains(e['from']) || !products.contains(e['to']))) throw const FormatException('Unknown transfer product.'); if(e['payment']=='iou' && (!['single','deal','sale'].contains(e['type']) || !customerIds.contains(e['customerId'])))throw const FormatException('IOU sales must reference a customer.');if(e['customerId']!=null && !customerIds.contains(e['customerId']))throw const FormatException('Sale references an unknown customer.'); }
+  validateBundles(s);
   purchaseHistory(s);
   validateStocktakes(s);
   final ids=<String>{};for(final a in objects(s['attachments'])) {verifyAttachment(a,s);if(!ids.add(a['id'] as String)) throw const FormatException('Duplicate receipt.');}
   final result=calculate(objects(s['events']));for(final a in objects(s['attachments'])) {if(!result.history.containsKey(a['eventId'])) throw const FormatException('Receipt has no transaction.');}
   return result;
 }
+void validateBundles(Obj state) {
+  final products={for(final p in objects(state['products'])) p['id'] as String:p};
+  final ids=<String>{};
+  for(final bundle in objects(state['bundles'] ?? const <dynamic>[])) {
+    final id=string(bundle['id'],100),name=string(bundle['name'],120).trim();
+    if(id.isEmpty || name.isEmpty || !ids.add(id) || products.containsKey(id)) throw const FormatException('Invalid, duplicate or colliding bundle.');
+    string(bundle['category'],80);string(bundle['description'] ?? '',1000);
+    if(bundle['sellingPrice']!=null)integer(bundle['sellingPrice'],1);
+    if(bundle['archived']!=null && bundle['archived'] is! bool)throw const FormatException('Invalid bundle archive setting.');
+    final seen=<String>{};final components=objects(bundle['components']);
+    if(components.isEmpty)throw const FormatException('Bundle needs components.');
+    for(final component in components) {final productId=string(component['productId'],100);if(!products.containsKey(productId) || !seen.add(productId))throw const FormatException('Bundle has an unknown or duplicate component.');integer(component['quantity'],1,10000);}
+    if(bundle['photo']!=null){verifyAttachment(obj(bundle['photo']));if(bundle['photo']['mime']=='application/pdf')throw const FormatException('Bundle photos must be JPG or PNG images.');}
+  }
+  for(final event in objects(state['events'])) {
+    if(event['bundleId']==null)continue;
+    final bundleId=string(event['bundleId'],100),name=string(event['bundleName'],120);
+    integer(event['bundleQuantity'],1,10000);
+    final definition=objects(state['bundles'] ?? const <dynamic>[]).where((b)=>b['id']==bundleId).firstOrNull;
+    if(definition==null || name.isEmpty || event['type']!='sale')throw const FormatException('Bundle sale references a missing bundle definition.');
+    final parts=objects(event['bundleComponents']);if(parts.isEmpty)throw const FormatException('Bundle sale is missing its component snapshot.');
+    final snapshot=<String,int>{};for(final part in parts){if(!products.containsKey(part['productId']))throw const FormatException('Bundle sale references an unknown component.');final productId=part['productId'] as String;if(snapshot.containsKey(productId))throw const FormatException('Bundle sale has duplicate component rows.');snapshot[productId]=integer(part['quantity'],1,10000)*integer(event['bundleQuantity'],1,10000);}
+    for(final part in objects(event['standaloneAllocations'] ?? const <dynamic>[])){final productId=string(part['productId'],100);if(!products.containsKey(productId))throw const FormatException('Mixed sale references an unknown individual product.');snapshot[productId]=(snapshot[productId]??0)+integer(part['quantity'],1,10000);}
+    final allocations=<String,int>{for(final allocation in objects(event['allocations'])) allocation['productId'] as String:allocation['quantity'] as int};
+    if(canonical(snapshot)!=canonical(allocations))throw const FormatException('Bundle sale allocations do not match its component snapshot.');
+  }
+}
+
 void verifyAttachment(Obj a,[Obj? state]) {
   final bytes = attachmentBytes(a,state);
   if(bytes.isEmpty || bytes.length > 16*1024*1024 || bytesHash(bytes) != a['sha256'] || attachmentMime(bytes)!=a['mime'] || !['image/jpeg','image/png','application/pdf'].contains(a['mime'])) throw const FormatException('Invalid or damaged attachment.');

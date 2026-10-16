@@ -6,6 +6,7 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path/path.dart' as path;
 import 'package:business_tracker/core/codec.dart';
 import 'package:business_tracker/core/engine.dart';
+import 'package:business_tracker/core/bundles.dart';
 import 'package:business_tracker/services/repository.dart';
 import 'package:business_tracker/core/purchases.dart';
 import 'package:business_tracker/core/stocktakes.dart';
@@ -22,6 +23,27 @@ void main(){
     final results=await Future.wait(List.generate(30,(_)=>r.recordSale(sale)));expect(results.every((v)=>v),true);expect(objects(r.state['events']).length,2);
     await r.close();r=await Repository.open();expect(await r.recordSale(sale),false);expect(validateState(r.state).book.stock('repo-product-001'),2);expect(r.state['lastPayment'],'card');expect(validateState(r.state).summary()['revenue'],600);
     await expectLater(r.recordSale({...sale,'revenue':700}),throwsFormatException);await r.close();
+  });
+  test('bundle sale is idempotent across confirmation and backup restore',()async{
+    var r=await Repository.open();
+    final state=clone(r.state);
+    state['products']=[
+      {'id':'bundle-prod-a-001','name':'A','category':'Skincare','variant':'','sellingPrice':900,'purchaseCost':null,'minimum':0,'barcode':'','photo':null},
+      {'id':'bundle-prod-b-001','name':'B','category':'Skincare','variant':'','sellingPrice':900,'purchaseCost':null,'minimum':0,'barcode':'','photo':null},
+    ];
+    final bundle=<String,dynamic>{'id':'bundle-repo-001','name':'Two item set','category':'Skincare','description':'','sellingPrice':1500,'components':[{'productId':'bundle-prod-a-001','quantity':1},{'productId':'bundle-prod-b-001','quantity':1}],'archived':false,'photo':null};
+    state['bundles']=[bundle];await r.save(state);
+    await r.append(event(id:'bundle-repo-stock-a',type:'restock',quantity:2,productId:'bundle-prod-a-001',cost:400));
+    await r.append(event(id:'bundle-repo-stock-b',type:'restock',quantity:2,productId:'bundle-prod-b-001',cost:600));
+    final sale=bundleSaleEvent(id:'bundle-repo-sale-01',bundle:bundle,bundleQuantity:1,revenue:1500,payment:'card',note:'',date:DateTime.now().millisecondsSinceEpoch,recordedAt:DateTime.now().millisecondsSinceEpoch);
+    expect(await r.recordSale(sale),isTrue);expect(await r.recordSale(sale),isFalse);
+    expect(validateState(r.state).book.stock('bundle-prod-a-001'),1);expect(validateState(r.state).book.stock('bundle-prod-b-001'),1);
+    final backup=decodeBackup(encodeBackup(r.state));await r.restore(backup);
+    expect(objects(r.state['events']).where((e)=>e['bundleId']=='bundle-repo-001'),hasLength(1));
+    await r.close();r=await Repository.open();
+    expect(validateState(r.state).book.stock('bundle-prod-a-001'),1);expect(validateState(r.state).book.stock('bundle-prod-b-001'),1);
+    expect(validateState(r.state).summary()['revenue'],1500);expect(validateState(r.state).summary()['cogs'],500);
+    await r.close();
   });
   test('fresh database clears surviving keychain connection; restore has independent identity',()async{
     FlutterSecureStorage.setMockInitialValues({'sheets-google-id':'old-sheet','sheets-account':'old-account','sheets-mode':'google','sheets-auto':'true','sheets-local-identity':'previous-install'});

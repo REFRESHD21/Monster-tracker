@@ -4,12 +4,14 @@ const moduleCustomerAccounts = 'customerAccounts';
 const modulePriceComparison = 'storePriceComparison';
 const moduleForecasting = 'salesForecasting';
 const moduleSmartRestock = 'budgetSmartRestock';
+const moduleBundles = 'bundlesCombos';
 
 const moduleKeys = <String>[
   moduleCustomerAccounts,
   modulePriceComparison,
   moduleForecasting,
   moduleSmartRestock,
+  moduleBundles,
 ];
 
 const moduleNames = <String, String>{
@@ -17,6 +19,7 @@ const moduleNames = <String, String>{
   modulePriceComparison: 'Store Price Comparison',
   moduleForecasting: 'Sales Forecasting',
   moduleSmartRestock: 'Budget-Aware Smart Restocking',
+  moduleBundles: 'Bundles & Combos',
 };
 
 Obj moduleFlags(Obj state) {
@@ -177,7 +180,7 @@ List<Obj> budgetRestockPlan(
     final productOffers = offersForProduct({'retailerOffers': offers}, id);
     final offer = productOffers.isEmpty ? null : productOffers.first;
     final unitCost = offer == null
-        ? integer(product['purchaseCost'])
+        ? integer(product['purchaseCost'] ?? 0)
         : integer(offer['unitCost']);
     final packQuantity = offer == null ? 1 : integer(offer['packQuantity'], 1);
     final packCost = offer == null ? unitCost : integer(offer['priceCents'], 1);

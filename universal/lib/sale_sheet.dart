@@ -5,15 +5,17 @@ import 'package:uuid/uuid.dart';
 import 'core/codec.dart';
 import 'core/engine.dart';
 import 'core/products.dart';
+import 'core/bundles.dart';
 
 class SaleSheet extends StatefulWidget {
   final Obj product;
   final int stock;
   final String payment;
   final List<Obj> customers;
+  final Obj? bundle;
   final Future<void> Function(Obj event, Obj? receipt) onSave;
   final Future<Obj?> Function() pickReceipt;
-  const SaleSheet({super.key, required this.product, required this.stock, required this.payment, this.customers = const <Obj>[], required this.onSave, required this.pickReceipt});
+  const SaleSheet({super.key, required this.product, required this.stock, required this.payment, this.customers = const <Obj>[], this.bundle, required this.onSave, required this.pickReceipt});
   @override State<SaleSheet> createState() => _SaleSheetState();
 }
 
@@ -27,7 +29,7 @@ class _SaleSheetState extends State<SaleSheet> {
   bool saving = false, saved = false, gstRegistered = false, editedTotal = false;
   Obj? receipt;
   DateTime date = DateTime.now().toUtc().add(const Duration(hours:8));
-  @override void initState() {super.initState();total.text=amount(widget.product['sellingPrice']);}
+  @override void initState() {super.initState();total.text=amount(widget.product['sellingPrice'] as int? ?? 0);}
   @override void dispose() {for(final c in [quantity,total,fee,gst,note]) {c.dispose();}super.dispose();}
   void choose(String selected) => setState(() {
     mode=selected;editedTotal=false;error='';
@@ -42,12 +44,16 @@ class _SaleSheetState extends State<SaleSheet> {
     setState((){saving=true;error='';});
     try {
       final q=integer(int.tryParse(quantity.text),1,10000);
+      if(widget.product['sellingPrice']==null)throw const FormatException('Set a selling price before recording this sale.');
       if(q>widget.stock)throw const FormatException('Not enough stock. Reduce the quantity or restock this product.');
       if(payment=='iou' && customerId==null)throw const FormatException('Choose a customer for this IOU.');
-      final e=event(id:id,type:'sale',quantity:q,productId:widget.product['id'],revenue:cents(total.text),payment:payment,fee:payment=='iou'?0:cents(fee.text),outputGst:gstRegistered?cents(gst.text):0,note:note.text.trim(),date:date.subtract(const Duration(hours:8)).millisecondsSinceEpoch);
+      final revenue=cents(total.text),actualFee=payment=='iou'?0:cents(fee.text),tax=gstRegistered?cents(gst.text):0;
+      final e=widget.bundle==null
+        ? event(id:id,type:'sale',quantity:q,productId:widget.product['id'],revenue:revenue,payment:payment,fee:actualFee,outputGst:tax,note:note.text.trim(),date:date.subtract(const Duration(hours:8)).millisecondsSinceEpoch)
+        : bundleSaleEvent(id:id,bundle:widget.bundle!,bundleQuantity:q,revenue:revenue,payment:payment,note:note.text.trim(),date:date.subtract(const Duration(hours:8)).millisecondsSinceEpoch,recordedAt:recordedAt,customerId:customerId,fee:actualFee,outputGst:tax);
       if(payment=='iou')e['customerId']=customerId;
       e['recordedAt']=recordedAt;
-      e['productName']=productLabel(widget.product);
+      e['productName']=widget.bundle?['name'] ?? productLabel(widget.product);
       e['saleOption']=mode;
       await widget.onSave(e,receipt);
       saved=true;
@@ -70,10 +76,14 @@ class _SaleSheetState extends State<SaleSheet> {
     child:ConstrainedBox(constraints:BoxConstraints(maxHeight:MediaQuery.sizeOf(context).height*.88),child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       Flexible(child:SingleChildScrollView(child:IgnorePointer(ignoring:saving,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
         Text(productLabel(widget.product),style:Theme.of(context).textTheme.titleLarge),
-        Text('${widget.stock} available · ${money(widget.product['sellingPrice'])} each'),
+        if(widget.bundle!=null) ...[
+          const Text('Bundle contents'),
+          for(final component in objects(widget.bundle!['components'])) Text('${component['quantity']} × ${productLabel({'name':component['productName'] ?? component['productId'], 'variant':''})}'),
+        ],
+        Text('${widget.stock} available · ${widget.product['sellingPrice'] is int?money(widget.product['sellingPrice'] as int):'selling price not set'} ${widget.bundle==null?'each':'per bundle'}'),
         const SizedBox(height:12),
         Wrap(spacing:8,runSpacing:8,children:[
-          ChoiceChip(label:Text('1 item · ${money(widget.product['sellingPrice'])}'),selected:mode=='single',onSelected:(_)=>choose('single')),
+          ChoiceChip(label:Text('${widget.bundle==null?'1 item':'1 bundle'} · ${widget.product['sellingPrice'] is int?money(widget.product['sellingPrice'] as int):'Price not set'}'),selected:mode=='single',onSelected:(_)=>choose('single')),
           if(widget.product['twoItemPrice']!=null)ChoiceChip(label:Text('2-item deal · ${money(widget.product['twoItemPrice'])}'),selected:mode=='deal',onSelected:widget.stock<2?null:(_)=>choose('deal')),
           ChoiceChip(label:const Text('Custom quantity'),selected:mode=='custom',onSelected:(_)=>choose('custom')),
         ]),
