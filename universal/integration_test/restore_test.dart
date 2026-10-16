@@ -42,6 +42,7 @@ Future<void> _openRestore(WidgetTester tester) async {
   await tester.tap(find.descendant(of:find.byType(NavigationBar),matching:find.text('Settings')));
   await tester.pumpAndSettle();
   final action=find.text('Import / restore backup');
+  if(action.evaluate().isEmpty)await tester.scrollUntilVisible(action,250,scrollable:find.byType(Scrollable).first);
   await Scrollable.ensureVisible(tester.element(action),alignment:.5);
   await tester.pumpAndSettle();
   await tester.tap(action);
@@ -65,8 +66,8 @@ void main() {
     expect(find.text('Review restore'),findsOneWidget);
     expect(find.textContaining('2 products'),findsOneWidget);
     expect(find.textContaining('7 history records'),findsOneWidget);
-    expect(find.textContaining('Revenue \\$18.00'),findsOneWidget);
-    expect(find.textContaining('Inventory \\$27.11'),findsOneWidget);
+    expect(find.textContaining('Revenue \$18.00'),findsOneWidget);
+    expect(find.textContaining('Inventory \$27.11'),findsOneWidget);
     await tester.tap(find.widgetWithText(FilledButton,'Restore'));
     await tester.pumpAndSettle();
 
