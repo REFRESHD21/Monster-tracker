@@ -102,3 +102,26 @@ adb logcat -d > device-evidence/release-logcat.txt
 # This clear is on the disposable CI emulator only, after the upgrade proof.
 adb shell pm clear au.monster.tracker.plus
 drive_checked empty false
+
+# Exercise the in-app restore screen against a synthetic, checksum-valid
+# seven-event business backup. This clear is limited to the disposable emulator.
+adb shell pm clear au.monster.tracker.plus >/dev/null
+drive_restore() {
+  local attempt status log
+  for attempt in 1 2 3; do
+    log="device-evidence/drive-restore-$attempt.log"
+    set +e
+    timeout 8m flutter drive --no-dds --keep-app-running --driver=test_driver/integration_test.dart --target=integration_test/restore_test.dart --dart-define-from-file=config/google-oauth.json 2>&1 | tee "$log"
+    status=${PIPESTATUS[0]}
+    set -e
+    if [ "$status" -eq 0 ]; then return 0; fi
+    if [ "$attempt" -eq 3 ] || ! grep -Fq 'Service connection disposed' "$log" || grep -Eq 'EXCEPTION CAUGHT|Test failed|Some tests failed' "$log"; then
+      adb logcat -d > device-evidence/restore-failure-logcat.txt
+      return "$status"
+    fi
+    echo "Retrying restore test attachment after a pre-test transport disconnect; emulator app data remains disposable."
+    timeout 30s adb wait-for-device
+    adb shell am force-stop au.monster.tracker.plus
+  done
+}
+drive_restore
