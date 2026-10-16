@@ -1,5 +1,7 @@
 name: Universal tracker
 on:
+  push:
+    branches: ['feature/flutter-universal-tracker']
   pull_request:
     branches: ['feature/sheets-compatible-update']
   workflow_dispatch:
