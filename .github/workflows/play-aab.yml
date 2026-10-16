@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       version_code:
-        description: New Android version code (must be greater than 17)
+        description: New Android version code (must be greater than 18)
         required: true
         type: string
-        default: '18'
+        default: '19'
 
 permissions:
   contents: read
@@ -47,7 +47,7 @@ jobs:
             fi
           done
           [[ "$PLAY_BUILD_NUMBER" =~ ^[0-9]+$ ]]
-          (( PLAY_BUILD_NUMBER > 17 )) || { echo 'Version code must be greater than 17.' >&2; exit 1; }
+          (( PLAY_BUILD_NUMBER > 18 )) || { echo 'Version code must be greater than 18.' >&2; exit 1; }
           [[ "$PLAY_UPLOAD_CERT_SHA256" =~ ^([A-Fa-f0-9]{2}:?){32}$ ]] || { echo 'Upload certificate SHA-256 must contain 32 hexadecimal bytes.' >&2; exit 1; }
 
       - uses: actions/setup-java@v4
