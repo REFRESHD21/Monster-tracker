@@ -214,7 +214,7 @@ class _BusinessModuleScreenState extends State<BusinessModuleScreen> {
     };
     return Scaffold(
       appBar:AppBar(title:Text(title)),
-      body:SafeArea(child,ListView(padding:const EdgeInsets.all(16),children:children)),
+      body:SafeArea(child:ListView(padding:const EdgeInsets.all(16),children:children)),
     );
   }
 }
