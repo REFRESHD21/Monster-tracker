@@ -34,8 +34,7 @@ Future<void> exerciseProductFlow(WidgetTester tester, Repository repo,
     expect(objects(repo.state['products']).firstWhere((p)=>p['id']=='device-product-001')['twoItemPrice'],900);
     final historyBefore=objects(repo.state['events']).length;
     await tester.tap(find.byKey(const ValueKey('record-sale')));await tester.pumpAndSettle();
-    await tapVisible(find.byTooltip('Add product').first);
-    await tapVisible(find.text('Review cart · 1 items'));
+    await tapVisible(find.descendant(of:find.byType(BottomSheet),matching:find.text('Skincare cream · 50 ml')));
     await tapVisible(find.text('2-item deal · \$9.00'));
     await tapVisible(find.text('Card / bank'));
     await screenshot('fast-deal');
@@ -46,7 +45,7 @@ Future<void> exerciseProductFlow(WidgetTester tester, Repository repo,
     await Future.wait([repo.recordSale(retry),repo.recordSale(retry)]);expect(await repo.recordSale(retry),false);
     expect(objects(repo.state['events']).where((e)=>e['id']=='duplicate-sale-001').length,1);
     expect(validateState(repo.state).book.stock('device-product-001'),3);
-    await tester.tap(find.byKey(const ValueKey('record-sale')));await tester.pumpAndSettle();await tapVisible(find.byTooltip('Add product').first);await tapVisible(find.text('Review cart · 1 items'));
+    await tester.tap(find.byKey(const ValueKey('record-sale')));await tester.pumpAndSettle();await tapVisible(find.descendant(of:find.byType(BottomSheet),matching:find.text('Skincare cream · 50 ml')));
     expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip,'Card / bank')).selected,true);
     await tester.tap(find.text('Cancel'));await tester.pumpAndSettle();
     // Exercise the removal dialogs, including stock blockers and true deletion.
