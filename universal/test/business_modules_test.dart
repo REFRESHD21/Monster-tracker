@@ -57,6 +57,15 @@ void main() {
     expect(accounts.summary()['iou'],500);
     expect(customerBalances(state)['customer-00001'],300);
     expect(accounts.book.stock('iou-product-0001'),0);
+    state['events'].add(event(
+      id:'iou-undo-refund-0001',
+      type:'undo',
+      target:'iou-refund-0001',
+      note:'Refund reversal correction',
+    ));
+    accounts=validateState(state);
+    expect(accounts.summary()['revenue'],600);
+    expect(customerBalances(state)['customer-00001'],400);
   });
 
   test('invalid IOU without an existing customer is rejected',(){
@@ -95,6 +104,15 @@ void main() {
     expect(row['observedRevenue'],500);
     expect(row['forecastUnits'],5);
     expect(row['forecastRevenue'],500);
+    final reversed=clone(state);
+    reversed['events'].add(event(
+      id:'undo-refund-forecast-01',
+      type:'undo',
+      target:'refund-forecast-01',
+      note:'Refund reversal correction',
+    ));
+    final afterReversal=salesForecast(reversed,horizonDays:30,now:now);
+    expect(objects(afterReversal['products']).single['observedRevenue'],600);
     final limited=emptyState()..['products']=[product('forecast-product-01')];
     limited['events']=[state['events'][0]];
     expect(salesForecast(limited,horizonDays:7,now:now)['limited'],isTrue);
