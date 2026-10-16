@@ -59,6 +59,8 @@ void main() {
           matching: find.text('Home'),
         ));
         await tester.pumpAndSettle();
+        await tester.drag(find.byType(ListView).first, const Offset(0, 2400));
+        await tester.pumpAndSettle();
         for (final key in moduleKeys) {
           expect(find.text(moduleNames[key]!), findsOneWidget);
         }
@@ -80,6 +82,8 @@ void main() {
           of: find.byType(NavigationBar),
           matching: find.text('Home'),
         ));
+        await tester.pumpAndSettle();
+        await tester.drag(find.byType(ListView).first, const Offset(0, 2400));
         await tester.pumpAndSettle();
         expect(find.text(moduleNames[disabled]!), findsNothing);
         for (final other in moduleKeys.skip(1)) {
