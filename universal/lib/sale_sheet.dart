@@ -13,9 +13,10 @@ class SaleSheet extends StatefulWidget {
   final String payment;
   final List<Obj> customers;
   final Obj? bundle;
+  final List<Obj>? cartLines;
   final Future<void> Function(Obj event, Obj? receipt) onSave;
   final Future<Obj?> Function() pickReceipt;
-  const SaleSheet({super.key, required this.product, required this.stock, required this.payment, this.customers = const <Obj>[], this.bundle, required this.onSave, required this.pickReceipt});
+  const SaleSheet({super.key, required this.product, required this.stock, required this.payment, this.customers = const <Obj>[], this.bundle, this.cartLines, required this.onSave, required this.pickReceipt});
   @override State<SaleSheet> createState() => _SaleSheetState();
 }
 
@@ -29,7 +30,7 @@ class _SaleSheetState extends State<SaleSheet> {
   bool saving = false, saved = false, gstRegistered = false, editedTotal = false;
   Obj? receipt;
   DateTime date = DateTime.now().toUtc().add(const Duration(hours:8));
-  @override void initState() {super.initState();total.text=amount(widget.product['sellingPrice'] as int? ?? 0);}
+  @override void initState() {super.initState();final subtotal=widget.cartLines==null?widget.product['sellingPrice'] as int? ?? 0:widget.cartLines!.fold<int>(0,(sum,line)=>sum+(line['unitPrice'] as int)*(line['quantity'] as int));total.text=amount(subtotal);}
   @override void dispose() {for(final c in [quantity,total,fee,gst,note]) {c.dispose();}super.dispose();}
   void choose(String selected) => setState(() {
     mode=selected;editedTotal=false;error='';
@@ -43,17 +44,33 @@ class _SaleSheetState extends State<SaleSheet> {
     if(saving || saved)return;
     setState((){saving=true;error='';});
     try {
-      final q=integer(int.tryParse(quantity.text),1,10000);
+      final q=widget.cartLines==null?integer(int.tryParse(quantity.text),1,10000):1;
       if(widget.product['sellingPrice']==null)throw const FormatException('Set a selling price before recording this sale.');
-      if(q>widget.stock)throw const FormatException('Not enough stock. Reduce the quantity or restock this product.');
+      if(widget.cartLines==null && q>widget.stock)throw const FormatException('Not enough stock. Reduce the quantity or restock this product.');
       if(payment=='iou' && customerId==null)throw const FormatException('Choose a customer for this IOU.');
       final revenue=cents(total.text),actualFee=payment=='iou'?0:cents(fee.text),tax=gstRegistered?cents(gst.text):0;
-      final e=widget.bundle==null
-        ? event(id:id,type:'sale',quantity:q,productId:widget.product['id'],revenue:revenue,payment:payment,fee:actualFee,outputGst:tax,note:note.text.trim(),date:date.subtract(const Duration(hours:8)).millisecondsSinceEpoch)
-        : bundleSaleEvent(id:id,bundle:widget.bundle!,bundleQuantity:q,revenue:revenue,payment:payment,note:note.text.trim(),date:date.subtract(const Duration(hours:8)).millisecondsSinceEpoch,recordedAt:recordedAt,customerId:customerId,fee:actualFee,outputGst:tax);
+      Obj e;
+      if(widget.cartLines!=null){
+        final bundleLine=widget.cartLines!.where((line)=>line['kind']=='bundle').firstOrNull;
+        final individual=[for(final line in widget.cartLines!.where((line)=>line['kind']=='product')) {'productId':line['id'],'quantity':line['quantity']}];
+        if(bundleLine!=null){
+          final b=obj(bundleLine['bundle']);
+          e=bundleSaleEvent(id:id,bundle:b,bundleQuantity:bundleLine['quantity'] as int,revenue:revenue,payment:payment,note:note.text.trim(),date:date.subtract(const Duration(hours:8)).millisecondsSinceEpoch,recordedAt:recordedAt,customerId:customerId,fee:actualFee,outputGst:tax,individualLines:individual);
+        }else{
+          final allocations=<String,int>{};
+          for(final line in widget.cartLines!){final productId=line['id'] as String;allocations[productId]=(allocations[productId]??0)+(line['quantity'] as int);}
+          final physical=allocations.values.fold<int>(0,(sum,q)=>sum+q);
+          e=event(id:id,type:'sale',quantity:physical,revenue:revenue,payment:payment,fee:actualFee,outputGst:tax,note:note.text.trim(),date:date.subtract(const Duration(hours:8)).millisecondsSinceEpoch);
+          e['allocations']=[for(final entry in allocations.entries) {'productId':entry.key,'quantity':entry.value}];
+        }
+      }else if(widget.bundle==null){
+        e=event(id:id,type:'sale',quantity:q,productId:widget.product['id'],revenue:revenue,payment:payment,fee:actualFee,outputGst:tax,note:note.text.trim(),date:date.subtract(const Duration(hours:8)).millisecondsSinceEpoch);
+      }else{
+        e=bundleSaleEvent(id:id,bundle:widget.bundle!,bundleQuantity:q,revenue:revenue,payment:payment,note:note.text.trim(),date:date.subtract(const Duration(hours:8)).millisecondsSinceEpoch,recordedAt:recordedAt,customerId:customerId,fee:actualFee,outputGst:tax);
+      }
       if(payment=='iou')e['customerId']=customerId;
       e['recordedAt']=recordedAt;
-      e['productName']=widget.bundle?['name'] ?? productLabel(widget.product);
+      e['productName']=widget.cartLines==null?widget.bundle?['name'] ?? productLabel(widget.product):widget.cartLines!.map((line)=>'${line['quantity']} × ${line['name']}').join(', ');
       e['saleOption']=mode;
       await widget.onSave(e,receipt);
       saved=true;
@@ -75,13 +92,18 @@ class _SaleSheetState extends State<SaleSheet> {
     padding:EdgeInsets.only(left:20,right:20,bottom:MediaQuery.viewInsetsOf(context).bottom+12),
     child:ConstrainedBox(constraints:BoxConstraints(maxHeight:MediaQuery.sizeOf(context).height*.88),child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       Flexible(child:SingleChildScrollView(child:IgnorePointer(ignoring:saving,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-        Text(productLabel(widget.product),style:Theme.of(context).textTheme.titleLarge),
+        Text(widget.cartLines==null?productLabel(widget.product):'Sale cart',style:Theme.of(context).textTheme.titleLarge),
+        if(widget.cartLines!=null)...[
+          const Text('Items in this sale'),
+          for(final line in widget.cartLines!)Text('${line['quantity']} × ${line['name']} · ${money((line['unitPrice'] as int)*(line['quantity'] as int))}'),
+        ],
         if(widget.bundle!=null) ...[
           const Text('Bundle contents'),
           for(final component in objects(widget.bundle!['components'])) Text('${component['quantity']} × ${productLabel({'name':component['productName'] ?? component['productId'], 'variant':''})}'),
         ],
-        Text('${widget.stock} available · ${widget.product['sellingPrice'] is int?money(widget.product['sellingPrice'] as int):'selling price not set'} ${widget.bundle==null?'each':'per bundle'}'),
+        if(widget.cartLines==null)Text('${widget.stock} available · ${widget.product['sellingPrice'] is int?money(widget.product['sellingPrice'] as int):'selling price not set'} ${widget.bundle==null?'each':'per bundle'}'),
         const SizedBox(height:12),
+        if(widget.cartLines==null)...[
         Wrap(spacing:8,runSpacing:8,children:[
           ChoiceChip(label:Text('${widget.bundle==null?'1 item':'1 bundle'} · ${widget.product['sellingPrice'] is int?money(widget.product['sellingPrice'] as int):'Price not set'}'),selected:mode=='single',onSelected:(_)=>choose('single')),
           if(widget.product['twoItemPrice']!=null)ChoiceChip(label:Text('2-item deal · ${money(widget.product['twoItemPrice'])}'),selected:mode=='deal',onSelected:widget.stock<2?null:(_)=>choose('deal')),
@@ -92,6 +114,8 @@ class _SaleSheetState extends State<SaleSheet> {
           Expanded(child:input(quantity,'Quantity',changed:(v)=>setState((){mode='custom';final q=int.tryParse(v);if(!editedTotal && q!=null && q>0 && q<=10000){try{total.text=amount(saleTotal(widget.product,q));}on FormatException{/* Validate on confirmation. */}}}))),
           const SizedBox(width:12),Expanded(child:input(total,'Total (AUD)',changed:(_)=>setState((){editedTotal=true;mode='custom';}))),
         ]),
+        ],
+        if(widget.cartLines!=null)input(total,'Total (AUD)',changed:(_)=>setState(()=>editedTotal=true)),
         const Text('Payment recorded'),
         Wrap(spacing:12,children:[for(final p in ['cash','card',if(widget.customers.isNotEmpty)'iou'])ChoiceChip(label:Text(p=='cash'?'Cash':p=='card'?'Card / bank':'IOU'),selected:payment==p,onSelected:(_)=>setState((){payment=p;if(p=='iou')fee.text='0.00';}))]),
         if(payment=='iou')...[

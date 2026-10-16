@@ -41,4 +41,28 @@ void main(){
     await t.enterText(find.byType(TextField).at(0),'1');await t.tap(find.byKey(const ValueKey('confirm-sale')));await t.pumpAndSettle();expect(find.text('Storage unavailable'),findsOneWidget);
     await t.tap(find.byKey(const ValueKey('confirm-sale')));await t.pumpAndSettle();expect(ids.length,2);expect(ids.toSet().length,1);expect(entries.toSet().length,1);
   });
+  testWidgets('mixed bundle and individual cart records one revenue-bearing sale with component allocations',(t)async{
+    Obj? saved;
+    final bundle=<String,dynamic>{'id':'cart-bundle-001','name':'Starter set','sellingPrice':500,'components':[{'productId':'component-a-001','quantity':1},{'productId':'component-b-001','quantity':2}]};
+    final lines=<Obj>[
+      {'kind':'bundle','id':'cart-bundle-001','name':'Starter set','quantity':1,'unitPrice':500,'bundle':bundle},
+      {'kind':'product','id':'individual-c-001','name':'Extra item','quantity':2,'unitPrice':350},
+    ];
+    final cartProduct=<String,dynamic>{'id':'cart','name':'Sale cart','variant':'','sellingPrice':1200};
+    t.view.physicalSize=const Size(420,900);t.view.devicePixelRatio=1;
+    addTearDown(t.view.resetPhysicalSize);addTearDown(t.view.resetDevicePixelRatio);
+    await t.pumpWidget(MaterialApp(home:Scaffold(body:Builder(builder:(c)=>TextButton(onPressed:()=>showModalBottomSheet<bool>(context:c,isScrollControlled:true,builder:(_)=>SaleSheet(product:cartProduct,cartLines:lines,stock:100,payment:'cash',onSave:(e,a)async{saved=e;},pickReceipt:()async=>null)),child:const Text('Open cart'))))));
+    await t.tap(find.text('Open cart'));await t.pumpAndSettle();
+    expect(find.text('1 × Starter set · $5.00'),findsOneWidget);
+    expect(find.text('2 × Extra item · $7.00'),findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('confirm-sale')));await t.pumpAndSettle();
+    expect(saved!['revenue'],1200);
+    expect(saved!['bundleId'],'cart-bundle-001');
+    expect(saved!['allocations'],[
+      {'productId':'component-a-001','quantity':1},
+      {'productId':'component-b-001','quantity':2},
+      {'productId':'individual-c-001','quantity':2},
+    ]);
+    expect(saved!['standaloneAllocations'],[{'productId':'individual-c-001','quantity':2}]);
+  });
 }

@@ -119,22 +119,66 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
     try {
       if(selected==null){
         var filter='';
+        final cart=<String,int>{};
+        Obj? selectionResult;
         selected=await showModalBottomSheet<Obj>(context:c,isScrollControlled:true,showDragHandle:true,builder:(b)=>StatefulBuilder(builder:(b,update){
           final candidates=activeProducts(s).where((p)=>'${productLabel(p)} ${p['barcode']}'.toLowerCase().contains(filter.toLowerCase())).toList();
           final availableBundles=moduleEnabled(s,moduleBundles)?bundleRecords(s).where((item)=>item['archived']!=true && '${item['name']} ${item['category']}'.toLowerCase().contains(filter.toLowerCase())).toList():<Obj>[];
-          return SafeArea(child:SizedBox(height:MediaQuery.sizeOf(b).height*.78,child:Padding(padding:const EdgeInsets.all(20),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[title('Quick sale'),TextField(decoration:const InputDecoration(labelText:'Find product or bundle',prefixIcon:Icon(Icons.search)),onChanged:(v)=>update(()=>filter=v)),Expanded(child:ListView(children:[
+          final pickedCount=cart.values.fold<int>(0,(sum,q)=>sum+q);
+          bool canAdd(String key, Obj item, bool isBundle){
+            if(isBundle && cart.keys.any((existing)=>existing.startsWith('b:')&&existing!=key))return false;
+            final next=<String,int>{};
+            for(final entry in cart.entries){
+              final parts=entry.key.split(':');
+              final current=parts[0]=='b'?bundleById(s,parts.sublist(1).join(':')):objects(s['products']).where((p)=>p['id']==parts.sublist(1).join(':')).firstOrNull;
+              if(current==null)continue;
+              if(parts[0]=='b'){for(final part in objects(current['components'])){final id=part['productId'] as String;next[id]=(next[id]??0)+(part['quantity'] as int)*entry.value;}}
+              else {final id=current['id'] as String;next[id]=(next[id]??0)+entry.value;}
+            }
+            if(isBundle){for(final part in objects(item['components'])){final id=part['productId'] as String;next[id]=(next[id]??0)+(part['quantity'] as int);}}
+            else {final id=item['id'] as String;next[id]=(next[id]??0)+1;}
+            return next.entries.every((e)=>accounts.book.stock(e.key)>=e.value);
+          }
+          void add(String key, Obj item, bool isBundle){
+            if(!canAdd(key,item,isBundle))return;
+            update(()=>cart[key]=(cart[key]??0)+1);
+          }
+          return SafeArea(child:SizedBox(height:MediaQuery.sizeOf(b).height*.82,child:Padding(padding:const EdgeInsets.all(20),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[title('Quick sale'),TextField(decoration:const InputDecoration(labelText:'Find product or bundle',prefixIcon:Icon(Icons.search)),onChanged:(v)=>update(()=>filter=v)),Expanded(child:ListView(children:[
             if(candidates.isEmpty&&availableBundles.isEmpty)text('No matching sale items. Add products or enable Bundles & Combos.'),
-            for(final p in candidates)ListTile(title:Text(productLabel(p)),subtitle:Text('${accounts.book.stock(p['id'])} available · ${p['sellingPrice'] is int?money(p['sellingPrice'] as int):'Set selling price'} each'),enabled:accounts.book.stock(p['id'])>0,onTap:()=>Navigator.pop(b,p)),
+            for(final p in candidates)ListTile(title:Text(productLabel(p)),subtitle:Text('${accounts.book.stock(p['id'])} available · ${p['sellingPrice'] is int?money(p['sellingPrice'] as int):'Set selling price'} each'),trailing:Row(mainAxisSize:MainAxisSize.min,children:[if((cart['p:${p['id']}']??0)>0)...[Text('${cart['p:${p['id']}']} ×  '),IconButton(tooltip:'Remove product',onPressed:()=>update((){final key='p:${p['id']}';if(cart[key]==1)cart.remove(key);else cart[key]=cart[key]!-1;}),icon:const Icon(Icons.remove_circle_outline))],IconButton(tooltip:'Add product',onPressed:canAdd('p:${p['id']}',p,false)?()=>add('p:${p['id']}',p,false):null,icon:const Icon(Icons.add_circle_outline))])),
             if(availableBundles.isNotEmpty)title('Bundles'),
-            for(final bundle in availableBundles)Builder(builder:(_){final count=bundleAvailability(accounts,bundle,objects(s['products']));final contents=objects(bundle['components']).map((part){final product=objects(s['products']).where((p)=>p['id']==part['productId']).firstOrNull;return '${part['quantity']} × ${product==null?part['productId']:productLabel(product)}';}).join(', ');return ListTile(title:Text(bundle['name'] as String),subtitle:Text('${bundle['sellingPrice'] is int?money(bundle['sellingPrice'] as int):'Set selling price'} · $count available\n$contents'),isThreeLine:true,enabled:count>0&&bundle['sellingPrice'] is int,onTap:()=>Navigator.pop(b,{...bundle,'_bundleSelection':true}));}),
-          ]))]))));
+            for(final bundle in availableBundles)Builder(builder:(_){final key='b:${bundle['id']}';final count=bundleAvailability(accounts,bundle,objects(s['products']));final contents=objects(bundle['components']).map((part){final product=objects(s['products']).where((p)=>p['id']==part['productId']).firstOrNull;return '${part['quantity']} × ${product==null?part['productId']:productLabel(product)}';}).join(', ');final can=canAdd(key,bundle,true);return ListTile(title:Text(bundle['name'] as String),subtitle:Text('${bundle['sellingPrice'] is int?money(bundle['sellingPrice'] as int):'Set selling price'} · $count available\n$contents'),isThreeLine:true,trailing:Row(mainAxisSize:MainAxisSize.min,children:[if((cart[key]??0)>0)...[Text('${cart[key]} ×  '),IconButton(tooltip:'Remove bundle',onPressed:()=>update((){if(cart[key]==1)cart.remove(key);else cart[key]=cart[key]!-1;}),icon:const Icon(Icons.remove_circle_outline))],IconButton(tooltip:'Add bundle',onPressed:can&&bundle['sellingPrice'] is int?()=>add(key,bundle,true):null,icon:const Icon(Icons.add_circle_outline))]));}),
+          ])),if(pickedCount>0)Padding(padding:const EdgeInsets.symmetric(vertical:8),child:Text('Cart: $pickedCount sale items')),FilledButton(onPressed:pickedCount==0?null:(){selectionResult={'_cartSelection':true,'lines':[for(final entry in cart.entries){'kind':entry.key.startsWith('b:')?'bundle':'product','id':entry.key.substring(2),'quantity':entry.value}]};Navigator.pop(b,selectionResult);},child:Text(pickedCount==0?'Add items to sale':'Review cart · $pickedCount items'))]))));
         }));
       }
       if(selected==null || !c.mounted)return;
+      List<Obj>? cartLines;
       Obj? selectedBundle;
       late Obj p;
       late int stock;
-      if(selected['_bundleSelection']==true){
+      if(selected['_cartSelection']==true){
+        cartLines=[];
+        var cartSubtotal=0;
+        for(final line in objects(selected['lines'])){
+          final isBundle=line['kind']=='bundle',id=line['id'] as String,q=line['quantity'] as int;
+          if(isBundle){
+            if(!moduleEnabled(s,moduleBundles))throw const FormatException('Enable Bundles & Combos to sell bundles.');
+            final source=bundleById(s,id);
+            if(source==null||source['archived']==true||source['sellingPrice'] is! int)throw const FormatException('A selected bundle is no longer available or has no price.');
+            final bundle=<String,dynamic>{...clone(source),'components':[for(final part in objects(source['components'])) {...part,'productName':productLabel(objects(s['products']).firstWhere((product)=>product['id']==part['productId']))}]};
+            cartSubtotal+=(source['sellingPrice'] as int)*q;
+            cartLines.add({'kind':'bundle','id':id,'quantity':q,'bundle':bundle,'name':source['name'],'unitPrice':source['sellingPrice']});
+          }else{
+            final product=objects(s['products']).where((item)=>item['id']==id).firstOrNull;
+            if(product==null||isArchived(product)||product['sellingPrice'] is! int)throw const FormatException('A selected product is no longer available or has no price.');
+            cartSubtotal+=(product['sellingPrice'] as int)*q;
+            cartLines.add({'kind':'product','id':id,'quantity':q,'product':product,'name':productLabel(product),'unitPrice':product['sellingPrice']});
+          }
+        }
+        if(cartLines.isEmpty)throw const FormatException('Add at least one item to the sale.');
+        p={'id':'mixed-sale-cart','name':'Sale cart','variant':'','sellingPrice':cartSubtotal,'twoItemPrice':null};
+        stock=10000;
+      }else if(selected['_bundleSelection']==true){
         if(!moduleEnabled(s,moduleBundles))throw const FormatException('Enable Bundles & Combos to sell bundles.');
         selectedBundle=bundleById(s,selected['id'] as String);
         if(selectedBundle==null||selectedBundle['archived']==true)throw const FormatException('This bundle is no longer available.');
@@ -149,7 +193,7 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
         stock=accounts.book.stock(p['id']);
         if(stock==0){ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content:Text('No stock available. Receive stock from product options first.')));return;}
       }
-      final saved=await showModalBottomSheet<bool>(context:c,isScrollControlled:true,isDismissible:false,enableDrag:false,showDragHandle:true,builder:(b)=>SaleSheet(product:clone(p),bundle:selectedBundle==null?null:clone(selectedBundle!),stock:stock,payment:s['lastPayment'] as String? ?? 'cash',customers:moduleEnabled(s,moduleCustomerAccounts)?customerRecords(s):const <Obj>[],pickReceipt:()=>photo(b,receipt:true),onSave:(e,a)async{await repo.recordSale(e,a);}));
+      final saved=await showModalBottomSheet<bool>(context:c,isScrollControlled:true,isDismissible:false,enableDrag:false,showDragHandle:true,builder:(b)=>SaleSheet(product:clone(p),bundle:selectedBundle==null?null:clone(selectedBundle!),cartLines:cartLines,stock:stock,payment:s['lastPayment'] as String? ?? 'cash',customers:moduleEnabled(s,moduleCustomerAccounts)?customerRecords(s):const <Obj>[],pickReceipt:()=>photo(b,receipt:true),onSave:(e,a)async{await repo.recordSale(e,a);}));
       if(saved==true && mounted){setState((){});if(c.mounted)ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content:Text('Sale recorded.')));unawaited(automatic());}
     } catch(e){if(c.mounted)ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text('$e')));}
     finally{saleOpen=false;}
