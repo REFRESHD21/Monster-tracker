@@ -91,7 +91,7 @@ class Repository {
       return false;
     }
     if(e['type']!='sale')throw const FormatException('Expected a sale.');
-    final next=clone(state);(next['events'] as List).add(e);next['lastPayment']=e['payment'];
+    final next=clone(state);(next['events'] as List).add(e);if(['cash','card'].contains(e['payment']))next['lastPayment']=e['payment'];
     if(attachment!=null)(next['attachments'] as List).add({...attachment,'eventId':id});
     await save(next);return true;
   }
