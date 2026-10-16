@@ -46,7 +46,10 @@ Future<void> _openRestore(WidgetTester tester) async {
   await Scrollable.ensureVisible(tester.element(action),alignment:.5);
   await tester.pumpAndSettle();
   await tester.tap(action);
-  await tester.pumpAndSettle();
+  // Restore intentionally keeps an indeterminate progress indicator active
+  // while review/confirmation is open, so settle would never finish here.
+  await tester.pump();
+  await tester.pump(const Duration(milliseconds:100));
 }
 
 void main() {
