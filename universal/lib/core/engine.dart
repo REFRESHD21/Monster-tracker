@@ -74,7 +74,7 @@ class Accounts {
     for(final p in earned.values){p['profit']=(unknownEarnedByProduct[p['productId']]??0)>0?null:p['revenue']-p['cogs'];revenue+=p['revenue'] as int;cogs+=p['cogs'] as int;}
     final potential=<String,Obj>{};var futureRevenue=0,futureCost=0,unknownCosts=0,unknownPrices=0;
     for(final entry in earned.entries){
-      final p=productById[entry.key]!, stock=book.stock(entry.key), price=p['sellingPrice'] as int, remainingCost=book.lots.values.where((l)=>l.product==entry.key).fold<int>(0,(sum,l)=>sum+l.cost);
+      final p=productById[entry.key]!, archived=p['archived']==true, stock=archived?0:book.stock(entry.key), price=p['sellingPrice'] as int, remainingCost=archived?0:book.lots.values.where((l)=>l.product==entry.key).fold<int>(0,(sum,l)=>sum+l.cost);
       final unitsWithCost=book.lots.values.where((l)=>l.product==entry.key && l.quantity>0 && l.cost>0).fold<int>(0,(sum,l)=>sum+l.quantity);
       if(stock>unitsWithCost) unknownCosts += stock-unitsWithCost;
       if(price<=0 && stock>0)unknownPrices+=stock;
