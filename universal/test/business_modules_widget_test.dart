@@ -86,9 +86,12 @@ void main() {
         await repo.close();
         repoClosed = true;
         repo = await Repository.open();
+        repoClosed = false;
         for (final key in moduleKeys) {
           expect(moduleEnabled(repo.state, key), key != disabled);
         }
+        await repo.close();
+        repoClosed = true;
         expect(tester.takeException(), isNull);
       } finally {
         await tester.pumpWidget(const SizedBox());
