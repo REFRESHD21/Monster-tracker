@@ -57,9 +57,7 @@ Map<String, int> customerBalances(Obj state) {
     (linked[customerId] ??= <String>{}).add(event['id'] as String);
   }
   for (final event in events) {
-    if (event['type'] != 'refund' ||
-        event['target'] is! String ||
-        undone.contains(event['id'])) continue;
+    if (event['type'] != 'refund' || event['target'] is! String) continue;
     for (final customerId in linked.keys) {
       if (linked[customerId]!.contains(event['target'])) {
         sales[customerId] = (sales[customerId] ?? 0) - integer(event['revenue']);
@@ -102,17 +100,22 @@ Obj salesForecast(Obj state, {required int horizonDays, required int now}) {
   const dayMs = 86400000;
   final windowStart = now - 30 * dayMs;
   final events = objects(state['events'] ?? const <dynamic>[]);
+  final undone = events
+      .where((e) => e['type'] == 'undo')
+      .map((e) => e['target'] as String?)
+      .whereType<String>()
+      .toSet();
   final saleEvents = events.where((e) =>
       ['sale', 'single', 'deal'].contains(e['type']) &&
       e['date'] is int &&
       (e['date'] as int) >= windowStart &&
       (e['date'] as int) <= now &&
-      !events.any((undo) => undo['type'] == 'undo' && undo['target'] == e['id'])).toList();
+      !undone.contains(e['id'])).toList();
   final saleIds = saleEvents.map((e) => e['id'] as String).toSet();
   final refunds = <String, int>{}, returns = <String, int>{};
   for (final event in events) {
     final target = event['target'];
-    if (!saleIds.contains(target)) continue;
+    if (!saleIds.contains(target) || undone.contains(event['id'])) continue;
     if (event['type'] == 'refund') refunds[target as String] = (refunds[target] ?? 0) + integer(event['revenue']);
     if (event['type'] == 'return') returns[target as String] = (returns[target] ?? 0) + integer(event['quantity']);
   }
