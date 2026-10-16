@@ -2,12 +2,37 @@
 set -euo pipefail
 mkdir -p device-evidence/before/databases
 trap 'status=$?; if [ "$status" -ne 0 ]; then adb logcat -d > device-evidence/failure-logcat.txt || true; adb exec-out screencap -p > device-evidence/failure-screen.png || true; fi' EXIT
+dismiss_emulator_system_anr() {
+  local xml="$1" point x y
+  if ! grep -Eq 'text="(Pixel Launcher|System UI) isn.t responding"' "$xml"; then return 0; fi
+  point=$(python3 - "$xml" <<'PY'
+import re, sys, xml.etree.ElementTree as ET
+root=ET.parse(sys.argv[1]).getroot()
+title=next((n.get('text','') for n in root.iter() if "isn't responding" in n.get('text','')), '')
+if not (title.startswith('Pixel Launcher') or title.startswith('System UI')):
+    raise SystemExit(0)
+node=next((n for n in root.iter() if n.get('text')=='Wait'), None)
+if node is None: raise SystemExit(0)
+m=re.fullmatch(r'\[(\d+),(\d+)\]\[(\d+),(\d+)\]',node.get('bounds',''))
+if m is None: raise SystemExit(0)
+l,t,r,b=map(int,m.groups())
+print((l+r)//2,(t+b)//2)
+PY
+)
+  if [[ -n "$point" ]]; then
+    read -r x y <<<"$point"
+    echo "Waiting out Android emulator launcher/system UI ANR."
+    adb shell input tap "$x" "$y"
+    sleep 2
+  fi
+}
 wait_for_ui() {
   local expected="$1" name="$2"
   for attempt in $(seq 1 10); do
     echo "Waiting for $name readiness (attempt $attempt)"
     timeout 20s adb shell uiautomator dump /sdcard/business-upgrade-ui.xml >/dev/null 2>&1 || true
     adb exec-out cat /sdcard/business-upgrade-ui.xml > "device-evidence/$name-ui.xml" || true
+    dismiss_emulator_system_anr "device-evidence/$name-ui.xml"
     if grep -Fq "$expected" "device-evidence/$name-ui.xml"; then return 0; fi
     sleep 1
   done
