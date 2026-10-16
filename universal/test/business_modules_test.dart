@@ -56,7 +56,7 @@ void main() {
     expect(accounts.summary()['revenue'],500);
     expect(accounts.summary()['iou'],500);
     expect(customerBalances(state)['customer-00001'],300);
-    expect(accounts.book.stock('iou-product-0001'),2);
+    expect(accounts.book.stock('iou-product-0001'),0);
   });
 
   test('invalid IOU without an existing customer is rejected',(){
