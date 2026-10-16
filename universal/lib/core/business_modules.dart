@@ -106,71 +106,50 @@ Obj salesForecast(Obj state, {required int horizonDays, required int now}) {
       (e['date'] as int) <= now &&
       !events.any((undo) => undo['type'] == 'undo' && undo['target'] == e['id'])).toList();
   final saleIds = saleEvents.map((e) => e['id'] as String).toSet();
-  final refundBySale = <String, int>{};
-  final returnedBySale = <String, int>{};
+  final refunds = <String, int>{}, returns = <String, int>{};
   for (final event in events) {
     final target = event['target'];
     if (!saleIds.contains(target)) continue;
-    if (event['type'] == 'refund') {
-      refundBySale[target as String] = (refundBySale[target] ?? 0) + integer(event['revenue']);
-    } else if (event['type'] == 'return') {
-      returnedBySale[target as String] = (returnedBySale[target] ?? 0) + integer(event['quantity']);
+    if (event['type'] == 'refund') refunds[target as String] = (refunds[target] ?? 0) + integer(event['revenue']);
+    if (event['type'] == 'return') returns[target as String] = (returns[target] ?? 0) + integer(event['quantity']);
+  }
+  final counts=<String,int>{}, revenues=<String,int>{}, saleDays=<int>{};
+  for(final sale in saleEvents) {
+    final saleId=sale['id'] as String, date=sale['date'] as int;
+    saleDays.add(date~/dayMs);
+    final quantity=integer(sale['quantity'],1), refund=(refunds[saleId]??0).clamp(0,integer(sale['revenue']));
+    final netRevenue=integer(sale['revenue'])-refund;
+    var returnLeft=(returns[saleId]??0).clamp(0,quantity), before=0, revenueDistributed=0;
+    final allocations=objects(sale['allocations']);
+    for(var i=0;i<allocations.length;i++) {
+      final allocation=allocations[i], q=integer(allocation['quantity'],1);
+      final returned=returnLeft<q?returnLeft:q;returnLeft-=returned;
+      final kept=q-returned;
+      final productId=allocation['productId'] as String;
+      final revenuePart=i==allocations.length-1?netRevenue-revenueDistributed:netRevenue*(before+q)~/quantity-netRevenue*before~/quantity;
+      revenueDistributed+=revenuePart;before+=q;
+      counts[productId]=(counts[productId]??0)+kept;
+      revenues[productId]=(revenues[productId]??0)+revenuePart;
     }
   }
-  final counts = <String, int>{};
-  final revenues = <String, int>{};
-  final dates = <int>{};
-  for (final sale in saleEvents) {
-    final date = sale['date'] as int;
-    dates.add(date ~/ dayMs);
-    final allocations = objects(sale['allocations']);
-    var distributed = 0;
-    final quantity = integer(sale['quantity'], 1);
-    for (var i = 0; i < allocations.length; i++) {
-      final allocation = allocations[i];
-      final q = integer(allocation['quantity'], 1);
-      final revenue = i == allocations.length - 1
-          ? integer(sale['revenue']) - distributed
-          : integer(sale['revenue']) * q ~/ quantity;
-      distributed += revenue;
-      final productId = allocation['productId'] as String;
-      counts[productId] = (counts[productId] ?? 0) + q;
-      revenues[productId] = (revenues[productId] ?? 0) + revenue;
-    }
+  final daysSorted=saleDays.toList()..sort();
+  final spanDays=daysSorted.isEmpty?0:daysSorted.last-daysSorted.first+1;
+  final observedDays=daysSorted.isEmpty?0:((now-windowStart)~/dayMs).clamp(1,30);
+  final enough=saleEvents.length>=3 && spanDays>=7 && observedDays>=7;
+  final products=<Obj>[];
+  for(final product in objects(state['products']??const <dynamic>[])) {
+    final id=product['id'] as String, units=counts[id]??0, revenue=revenues[id]??0;
+    final forecastUnits=enough?(units*horizonDays+observedDays~/2)~/observedDays:null;
+    final forecastRevenue=enough?(revenue*horizonDays+observedDays~/2)~/observedDays:null;
+    products.add(<String,dynamic>{'productId':id,'name':product['name'],'observedUnits':units,'observedRevenue':revenue,'forecastUnits':forecastUnits,'forecastRevenue':forecastRevenue});
   }
-  final earliest = dates.isEmpty ? now : dates.reduce((a, b) => a < b ? a : b) * dayMs;
-  final observedDays = dates.isEmpty
-      ? 0
-      : ((now - earliest) ~/ dayMs + 1).clamp(1, 30);
-  final enough = saleEvents.length >= 3 && observedDays >= 7;
-  final products = <Obj>[];
-  for (final product in objects(state['products'] ?? const <dynamic>[])) {
-    final id = product['id'] as String;
-    final units = counts[id] ?? 0;
-    final revenue = revenues[id] ?? 0;
-    final forecastUnits = enough ? (units * horizonDays + observedDays ~/ 2) ~/ observedDays : null;
-    final forecastRevenue = enough && units > 0
-        ? ((revenue - refundBySale.values.fold<int>(0, (sum, value) => sum + value)) * horizonDays + observedDays ~/ 2) ~/ observedDays
-        : enough ? 0 : null;
-    products.add(<String, dynamic>{
-      'productId': id,
-      'name': product['name'],
-      'observedUnits': units,
-      'forecastUnits': forecastUnits,
-      'forecastRevenue': forecastRevenue,
-    });
-  }
-  return <String, dynamic>{
-    'horizonDays': horizonDays,
-    'lookbackDays': 30,
-    'observedDays': observedDays,
-    'saleCount': saleEvents.length,
-    'limited': !enough,
-    'uncertainty': 'Stockout days are not modeled; estimates use recorded sales from the last 30 days.',
-    'products': products,
+  return <String,dynamic>{
+    'horizonDays':horizonDays,'lookbackDays':30,'observedDays':observedDays,
+    'saleCount':saleEvents.length,'saleSpanDays':spanDays,'limited':!enough,
+    'uncertainty':'Stockout days are not modeled; estimates use recorded sales from the last 30 days.',
+    'products':products,
   };
 }
-
 /// Tops each active product up only to its configured minimum. It allocates a
 /// user-entered budget by low-stock severity and never places an order.
 List<Obj> budgetRestockPlan(
