@@ -10,9 +10,10 @@ class SaleSheet extends StatefulWidget {
   final Obj product;
   final int stock;
   final String payment;
+  final List<Obj> customers;
   final Future<void> Function(Obj event, Obj? receipt) onSave;
   final Future<Obj?> Function() pickReceipt;
-  const SaleSheet({super.key, required this.product, required this.stock, required this.payment, required this.onSave, required this.pickReceipt});
+  const SaleSheet({super.key, required this.product, required this.stock, required this.payment, this.customers = const <Obj>[], required this.onSave, required this.pickReceipt});
   @override State<SaleSheet> createState() => _SaleSheetState();
 }
 
@@ -22,6 +23,7 @@ class _SaleSheetState extends State<SaleSheet> {
   final recordedAt = DateTime.now().millisecondsSinceEpoch;
   late String payment = widget.payment;
   String mode = 'single', error = '';
+  String? customerId;
   bool saving = false, saved = false, gstRegistered = false, editedTotal = false;
   Obj? receipt;
   DateTime date = DateTime.now().toUtc().add(const Duration(hours:8));
@@ -41,7 +43,9 @@ class _SaleSheetState extends State<SaleSheet> {
     try {
       final q=integer(int.tryParse(quantity.text),1,10000);
       if(q>widget.stock)throw const FormatException('Not enough stock. Reduce the quantity or restock this product.');
-      final e=event(id:id,type:'sale',quantity:q,productId:widget.product['id'],revenue:cents(total.text),payment:payment,fee:cents(fee.text),outputGst:gstRegistered?cents(gst.text):0,note:note.text.trim(),date:date.subtract(const Duration(hours:8)).millisecondsSinceEpoch);
+      if(payment=='iou' && customerId==null)throw const FormatException('Choose a customer for this IOU.');
+      final e=event(id:id,type:'sale',quantity:q,productId:widget.product['id'],revenue:cents(total.text),payment:payment,fee:payment=='iou'?0:cents(fee.text),outputGst:gstRegistered?cents(gst.text):0,note:note.text.trim(),date:date.subtract(const Duration(hours:8)).millisecondsSinceEpoch);
+      if(payment=='iou')e['customerId']=customerId;
       e['recordedAt']=recordedAt;
       e['productName']=productLabel(widget.product);
       e['saleOption']=mode;
@@ -79,7 +83,11 @@ class _SaleSheetState extends State<SaleSheet> {
           const SizedBox(width:12),Expanded(child:input(total,'Total (AUD)',changed:(_)=>setState((){editedTotal=true;mode='custom';}))),
         ]),
         const Text('Payment recorded'),
-        Wrap(spacing:12,children:[for(final p in ['cash','card'])ChoiceChip(label:Text(p=='cash'?'Cash':'Card / bank'),selected:payment==p,onSelected:(_)=>setState(()=>payment=p))]),
+        Wrap(spacing:12,children:[for(final p in ['cash','card',if(widget.customers.isNotEmpty)'iou'])ChoiceChip(label:Text(p=='cash'?'Cash':p=='card'?'Card / bank':'IOU'),selected:payment==p,onSelected:(_)=>setState(()=>{payment=p;if(p=='iou')fee.text='0.00';}))]),
+        if(payment=='iou')...[
+          DropdownButtonFormField<String>(value:customerId,decoration:const InputDecoration(labelText:'Customer'),items:[for(final customer in widget.customers)DropdownMenuItem(value:customer['id'] as String,child:Text(customer['name'] as String))],onChanged:(value)=>setState(()=>customerId=value)),
+          const Text('This completed sale is recorded in sales revenue and the customer’s outstanding balance. Payments received later do not create new sales.'),
+        ],
         ExpansionTile(tilePadding:EdgeInsets.zero,title:const Text('More details'),subtitle:const Text('Fee, GST, receipt, date or note'),children:[
           input(fee,'Actual payment fee (AUD)'),
           CheckboxListTile(contentPadding:EdgeInsets.zero,value:gstRegistered,onChanged:(v)=>setState(()=>gstRegistered=v!),title:const Text('GST registered: record output GST')),
