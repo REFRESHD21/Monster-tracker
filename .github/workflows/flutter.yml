@@ -1,7 +1,7 @@
 name: Universal tracker
 on:
   push:
-    branches: ['feature/flutter-universal-tracker']
+    branches: ['feature/flutter-universal-tracker', 'development/toggleable-business-modules']
   pull_request:
     branches: ['feature/sheets-compatible-update']
   workflow_dispatch:
