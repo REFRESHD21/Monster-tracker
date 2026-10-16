@@ -1,0 +1,38 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512" role="img" aria-labelledby="title desc">
+  <title id="title">Stock &amp; Sales Ledger app icon proposal</title>
+  <desc id="desc">An ivory ledger card with inventory bars on a deep green background, accented with mint and amber.</desc>
+  <defs>
+    <linearGradient id="field" x1="46" y1="38" x2="466" y2="480" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#203b31"/>
+      <stop offset="1" stop-color="#10231d"/>
+    </linearGradient>
+    <linearGradient id="paper" x1="151" y1="80" x2="365" y2="424" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#fff9e9"/>
+      <stop offset="1" stop-color="#e6f1e9"/>
+    </linearGradient>
+    <filter id="shadow" x="93" y="49" width="326" height="424" color-interpolation-filters="sRGB" filterUnits="userSpaceOnUse">
+      <feGaussianBlur in="SourceAlpha" stdDeviation="14"/>
+      <feOffset dy="10"/>
+      <feComponentTransfer><feFuncA type="linear" slope=".22"/></feComponentTransfer>
+      <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+    </filter>
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#field)"/>
+  <circle cx="405" cy="106" r="48" fill="#a8dfc3" opacity=".12"/>
+  <circle cx="104" cy="396" r="66" fill="#f2b968" opacity=".08"/>
+  <g filter="url(#shadow)">
+    <path d="M164 82h145l77 77v254c0 12.2-9.8 22-22 22H164c-12.2 0-22-9.8-22-22V104c0-12.2 9.8-22 22-22Z" fill="url(#paper)"/>
+    <path d="M309 82v55c0 12.2 9.8 22 22 22h55l-77-77Z" fill="#c6e3d2"/>
+    <rect x="177" y="191" width="33" height="33" rx="9" fill="#258565"/>
+    <path d="m186 207 7 7 13-15" fill="none" stroke="#fff9e9" stroke-linecap="round" stroke-linejoin="round" stroke-width="5"/>
+    <path d="M230 202h92" stroke="#82998d" stroke-linecap="round" stroke-width="10"/>
+    <rect x="177" y="252" width="33" height="33" rx="9" fill="#258565"/>
+    <path d="m186 268 7 7 13-15" fill="none" stroke="#fff9e9" stroke-linecap="round" stroke-linejoin="round" stroke-width="5"/>
+    <path d="M230 263h75" stroke="#82998d" stroke-linecap="round" stroke-width="10"/>
+    <path d="M177 322h145" stroke="#c3d2c9" stroke-linecap="round" stroke-width="9"/>
+    <rect x="180" y="354" width="32" height="48" rx="8" fill="#8dcfb0"/>
+    <rect x="224" y="335" width="32" height="67" rx="8" fill="#45a57f"/>
+    <rect x="268" y="307" width="32" height="95" rx="8" fill="#187756"/>
+    <path d="m287 291 19 16-24 4" fill="#e4a14b"/>
+  </g>
+</svg>

@@ -1,0 +1,178 @@
+name: Universal tracker
+on:
+  push:
+    branches: ['feature/flutter-universal-tracker']
+  pull_request:
+    branches: ['feature/sheets-compatible-update']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: universal-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  GOOGLE_IOS_CLIENT_ID: ${{ vars.GOOGLE_IOS_CLIENT_ID }}
+  MONSTER_DEBUG_KEYSTORE: ${{ github.workspace }}/.signing/monster-plus-debug.keystore
+jobs:
+  shared:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.7'
+          channel: stable
+          cache: true
+      - name: Legacy regression and regenerate Java oracle
+        run: |
+          bash scripts/test-core.sh
+          java -m jdk.compiler/com.sun.tools.javac.Main -cp .build/core -d .build/core scripts/flutter/ParityFixtures.java scripts/flutter/DomainFixtures.java
+          java -cp .build/core au.monster.tracker.ParityFixtures
+          java -cp .build/core au.monster.tracker.DomainFixtures
+          node sheets/universal.test.mjs
+      - working-directory: universal
+        run: flutter pub get
+      - working-directory: universal
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - working-directory: universal
+        run: flutter test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: shared-test-source
+          path: |
+            universal/pubspec.lock
+            universal/test/fixtures/
+  android:
+    needs: shared
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.7'
+          channel: stable
+          cache: true
+      - uses: actions/download-artifact@v4
+        with:
+          name: monster-tracker-apk
+          run-id: 38515243114
+          github-token: ${{ github.token }}
+          path: baseline-release
+      - uses: actions/download-artifact@v4
+        with:
+          name: monster-tracker-debug-apk
+          run-id: 38515243114
+          github-token: ${{ github.token }}
+          path: baseline-debug
+      - uses: actions/download-artifact@v4
+        with:
+          name: verified-android-update
+          run-id: 38676547102
+          github-token: ${{ github.token }}
+          path: baseline-flutter-release
+      - uses: actions/cache/restore@v4
+        with:
+          path: ${{ env.MONSTER_DEBUG_KEYSTORE }}
+          key: monster-plus-debug-signing-key-v1
+          fail-on-cache-miss: true
+      - name: Require matching 1.6.3 and 2.1.0 certificates BEFORE compiling update
+        run: |
+          set -euo pipefail
+          sdkmanager 'build-tools;35.0.0'
+          tools="$ANDROID_HOME/build-tools/35.0.0"
+          baseline=$(find baseline-release -name '*.apk' -print -quit)
+          "$tools/apksigner" verify --print-certs "$baseline" | tee baseline-cert.txt
+          keytool -exportcert -keystore "$MONSTER_DEBUG_KEYSTORE" -storepass android -alias androiddebugkey -file /tmp/compatible.der
+          expected=$(sha256sum /tmp/compatible.der | cut -d' ' -f1)
+          grep -F "Signer #1 certificate SHA-256 digest: $expected" baseline-cert.txt
+          "$tools/apksigner" verify --print-certs baseline-flutter-release/Business-Tracker-2.1.0.apk | tee baseline-flutter-cert.txt
+          grep -F "Signer #1 certificate SHA-256 digest: $expected" baseline-flutter-cert.txt
+          "$tools/aapt" dump badging baseline-flutter-release/Business-Tracker-2.1.0.apk | grep -F "package: name='au.monster.tracker.plus' versionCode='13'"
+          "$tools/apksigner" verify --print-certs baseline-debug/app-debug.apk | grep -F "Signer #1 certificate SHA-256 digest: $expected"
+      - run: python3 scripts/flutter/bootstrap.py
+      - working-directory: universal
+        run: flutter build apk --release --dart-define-from-file=config/google-oauth.json && flutter build apk --debug --dart-define-from-file=config/google-oauth.json
+      - name: Enable emulator acceleration
+        run: sudo chmod 666 /dev/kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          working-directory: universal
+          script: bash ../scripts/flutter/device-check.sh
+      - name: Verify release update certificate, package and contents
+        run: |
+          set -euo pipefail
+          tools="$ANDROID_HOME/build-tools/35.0.0"
+          apk=universal/build/app/outputs/flutter-apk/app-release.apk
+          "$tools/apksigner" verify --verbose --print-certs "$apk" | tee signing-verification.txt
+          keytool -exportcert -keystore "$MONSTER_DEBUG_KEYSTORE" -storepass android -alias androiddebugkey -file /tmp/compatible.der
+          expected=$(sha256sum /tmp/compatible.der | cut -d' ' -f1)
+          grep -F "Signer #1 certificate SHA-256 digest: $expected" signing-verification.txt
+          "$tools/aapt" dump badging "$apk" | tee apk-verification.txt
+          grep -F "package: name='au.monster.tracker.plus' versionCode='18'" apk-verification.txt
+          ! grep -q application-debuggable apk-verification.txt
+          unzip -tq "$apk"
+          python3 scripts/flutter/verify-oauth-apk.py "$apk" | tee oauth-verification.txt
+          mkdir -p dist
+          cp "$apk" dist/Business-Tracker-2.3.1.apk
+          cp signing-verification.txt apk-verification.txt oauth-verification.txt dist/
+          cd dist && sha256sum Business-Tracker-2.3.1.apk > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: verified-android-update
+          path: dist/
+          retention-days: 30
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: flutter-android-evidence
+          path: |
+            universal/device-evidence/
+            baseline-cert.txt
+            baseline-flutter-cert.txt
+            universal/pubspec.lock
+  ios:
+    needs: shared
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.7'
+          channel: stable
+          cache: true
+      - run: python3 scripts/flutter/bootstrap.py
+      - working-directory: universal
+        run: |
+          set -o pipefail
+          flutter build ios --release --no-codesign --dart-define=GOOGLE_IOS_CLIENT_ID=${{ vars.GOOGLE_IOS_CLIENT_ID }} --dart-define-from-file=config/google-oauth.json --verbose 2>&1 | tee ios-build.log
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ios-build-evidence
+          path: |
+            universal/ios-build.log
+            universal/pubspec.lock
+            universal/ios/Runner/Info.plist

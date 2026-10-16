@@ -1,0 +1,16 @@
+name: backup_destination
+version: 1.0.0
+publish_to: none
+environment:
+  sdk: '>=3.8.0 <4.0.0'
+dependencies:
+  flutter:
+    sdk: flutter
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: au.monster.tracker.backup
+        pluginClass: BackupDestinationPlugin
+      ios:
+        pluginClass: BackupDestinationPlugin
