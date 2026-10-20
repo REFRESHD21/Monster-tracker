@@ -22,16 +22,29 @@ class SaleSheet extends StatefulWidget {
 
 class _SaleSheetState extends State<SaleSheet> {
   final quantity = TextEditingController(text:'1'), total = TextEditingController(), fee = TextEditingController(text:'0.00'), gst = TextEditingController(text:'0.00'), note = TextEditingController();
+  final mixMatchPrice = TextEditingController(text:'6.00');
   final id = const Uuid().v4();
   final recordedAt = DateTime.now().millisecondsSinceEpoch;
   late String payment = widget.payment;
   String mode = 'single', error = '';
   String? customerId;
-  bool saving = false, saved = false, gstRegistered = false, editedTotal = false;
+  bool saving = false, saved = false, gstRegistered = false, editedTotal = false, mixMatch = false;
   Obj? receipt;
   DateTime date = DateTime.now().toUtc().add(const Duration(hours:8));
   @override void initState() {super.initState();final subtotal=widget.cartLines==null?widget.product['sellingPrice'] as int? ?? 0:widget.cartLines!.fold<int>(0,(sum,line)=>sum+(line['unitPrice'] as int)*(line['quantity'] as int));total.text=amount(subtotal);}
-  @override void dispose() {for(final c in [quantity,total,fee,gst,note]) {c.dispose();}super.dispose();}
+  bool get canMixMatch => widget.cartLines!=null && widget.cartLines!.where((line)=>line['kind']=='product').fold<int>(0,(sum,line)=>sum+(line['quantity'] as int))>=2;
+  int cartTotal(){
+    final productPrices=<int>[];var otherTotal=0;
+    for(final line in widget.cartLines ?? const <Obj>[]){
+      final q=line['quantity'] as int,unit=line['unitPrice'] as int;
+      if(line['kind']=='product'){for(var i=0;i<q;i++)productPrices.add(unit);}else{otherTotal+=unit*q;}
+    }
+    if(!mixMatch || productPrices.length<2)return otherTotal+productPrices.fold<int>(0,(sum,p)=>sum+p);
+    final deal=cents(mixMatchPrice.text);var result=otherTotal;
+    for(var i=0;i<productPrices.length;i+=2){result+=i+1<productPrices.length?deal:productPrices[i];}
+    return result;
+  }
+  @override void dispose() {for(final c in [quantity,total,fee,gst,note,mixMatchPrice]) {c.dispose();}super.dispose();}
   void choose(String selected) => setState(() {
     mode=selected;editedTotal=false;error='';
     if(selected!='custom')quantity.text=selected=='deal'?'2':'1';
@@ -121,7 +134,13 @@ class _SaleSheetState extends State<SaleSheet> {
           const SizedBox(width:12),Expanded(child:input(total,'Total (AUD)',changed:(_)=>setState((){editedTotal=true;mode='custom';}))),
         ]),
         ],
-        if(widget.cartLines!=null)input(total,'Total (AUD)',changed:(_)=>setState(()=>editedTotal=true)),
+        if(widget.cartLines!=null)...[
+          if(canMixMatch)...[
+            CheckboxListTile(contentPadding:EdgeInsets.zero,value:mixMatch,onChanged:(value)=>setState((){mixMatch=value??false;editedTotal=false;mode=mixMatch?'mix-match':'custom';try{total.text=amount(cartTotal());}on FormatException{/* Keep the current total until the pair price is valid. */}}),title:const Text('Apply mix-and-match deal'),subtitle:const Text('Every pair of individual products can use the deal price; bundles are excluded.'),controlAffinity:ListTileControlAffinity.leading),
+            if(mixMatch)input(mixMatchPrice,'Price for each pair (AUD)',changed:(_)=>setState((){if(!editedTotal){try{total.text=amount(cartTotal());}on FormatException{/* Validate when confirming. */}}})),
+          ],
+          input(total,'Total (AUD)',changed:(_)=>setState(()=>editedTotal=true)),
+        ],
         const Text('Payment recorded'),
         Wrap(spacing:12,children:[for(final p in ['cash','card',if(widget.customers.isNotEmpty)'iou'])ChoiceChip(label:Text(p=='cash'?'Cash':p=='card'?'Card / bank':'IOU'),selected:payment==p,onSelected:(_)=>setState((){payment=p;if(p=='iou')fee.text='0.00';}))]),
         if(payment=='iou')...[
