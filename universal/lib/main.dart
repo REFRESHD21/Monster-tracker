@@ -369,6 +369,7 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
       ],
       TextButton.icon(onPressed:()=>update(()=>lines.add(_PurchaseLineDraft(available.first['id'] as String))),icon:const Icon(Icons.add),label:const Text('Add another product')),
       field(note,'Notes (discount / allocable freight / other details)'),
+      CheckboxListTile(value:affectFunds,onChanged:(v)=>update(()=>affectFunds=v!),title:const Text('Deduct this purchase from business funds'),subtitle:const Text('Off by default. Stock and costs are recorded either way.'),contentPadding:EdgeInsets.zero),
       CheckboxListTile(value:unknownDate,onChanged:(v)=>update(()=>unknownDate=v!),title:const Text('Purchase date unknown'),contentPadding:EdgeInsets.zero),
       if(!unknownDate)TextButton.icon(onPressed:()async{final chosen=await showDatePicker(context:d,initialDate:date,firstDate:DateTime(2000),lastDate:DateTime(2099));if(chosen!=null)update(()=>date=DateTime(chosen.year,chosen.month,chosen.day,date.hour,date.minute));},icon:const Icon(Icons.calendar_today_outlined),label:Text('Purchase date · ${date.year}-${date.month.toString().padLeft(2,'0')}-${date.day.toString().padLeft(2,'0')}')),
     ]))),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel')),FilledButton(onPressed:()=>perform(c,()async{
