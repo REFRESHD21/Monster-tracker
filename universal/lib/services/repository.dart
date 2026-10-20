@@ -133,6 +133,10 @@ class Repository {
       throw const FormatException('This purchase ID already has different lines. No stock was added.');
     }
     final next=clone(state);(next['events'] as List).addAll(entries);
+    if(affectFunds){
+      final total=entries.fold<int>(0,(sum,e)=>sum+(e['cost'] as int));
+      if(total>0){final batch=obj(entries.first['purchaseBatch']);final funds=(next['moneyEntries'] ??= <dynamic>[]) as List;funds.add({'id':'restock-funds-$purchaseId','type':'restock','amount':total,'delta':-total,'payment':'none','note':'Stock purchase · ${batch['supplier']}','date':DateTime.now().millisecondsSinceEpoch});}
+    }
     validateState(next);
     await save(next);return true;
   }
