@@ -100,7 +100,7 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
       if(s['legacy']!=null)text('Your Monster history has been imported. Original records and unknown dates are retained.'),
       if(low.isNotEmpty)...[title('Low-stock alerts'),for(final p in low)ListTile(leading:const Icon(Icons.warning_amber),title:Text(productName(p['id'])),subtitle:Text('${a.book.stock(p['id'])} left · minimum ${p['minimum']}'),onTap:()=>product(c,p))],
       ExpansionTile(title:const Text('More tools'),subtitle:const Text('Reports, customers and other features'),children:[action('Purchase history',Icons.shopping_bag_outlined,()=>purchaseLedger(c)),action('Record an expense',Icons.receipt_outlined,()=>transaction(c,'expense',null)),if(moduleEnabled(s,moduleCustomerAccounts))action(moduleNames[moduleCustomerAccounts]!,Icons.people_outline,()=>openBusinessModule(c,moduleCustomerAccounts)),if(moduleEnabled(s,modulePriceComparison))action(moduleNames[modulePriceComparison]!,Icons.storefront_outlined,()=>openBusinessModule(c,modulePriceComparison)),if(moduleEnabled(s,moduleForecasting))action(moduleNames[moduleForecasting]!,Icons.trending_up,()=>openBusinessModule(c,moduleForecasting)),if(moduleEnabled(s,moduleSmartRestock))action(moduleNames[moduleSmartRestock]!,Icons.shopping_cart_outlined,()=>openBusinessModule(c,moduleSmartRestock)),if(moduleEnabled(s,moduleBundles))action(moduleNames[moduleBundles]!,Icons.widgets_outlined,()=>manageBundles(c))])];
-  }}
+  }
   Widget salesOverview(BuildContext c,Obj sales){
     final colors=Theme.of(c).colorScheme;
     final earnedColor=colors.onSurface;
