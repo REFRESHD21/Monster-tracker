@@ -61,6 +61,9 @@ void main() {
         await tester.pumpAndSettle();
         await tester.drag(find.byType(ListView).first, const Offset(0, 2400));
         await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('More tools'));
+        await tester.tap(find.text('More tools'));
+        await tester.pumpAndSettle();
         for (final key in moduleKeys) {
           expect(find.text(moduleNames[key]!), findsOneWidget);
         }
@@ -84,6 +87,9 @@ void main() {
         ));
         await tester.pumpAndSettle();
         await tester.drag(find.byType(ListView).first, const Offset(0, 2400));
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('More tools'));
+        await tester.tap(find.text('More tools'));
         await tester.pumpAndSettle();
         expect(find.text(moduleNames[disabled]!), findsNothing);
         for (final other in moduleKeys.skip(1)) {
