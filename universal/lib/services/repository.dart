@@ -68,7 +68,21 @@ class Repository {
     });
     revision=expectedRevision+1;state=clone(candidate);
   }
-  Future<void> append(Obj e, [Obj? attachment]) async {final next=clone(state);(next['events'] as List).add(e);if(attachment!=null)(next['attachments'] as List).add({...attachment,'eventId':e['id']});await save(next);}
+  Future<void> append(Obj e, [Obj? attachment]) async {
+    final next=clone(state),events=objects(next['events']);
+    final sourceId=e['target'];final source=events.where((old)=>old['id']==sourceId).firstOrNull;
+    events.add(e);next['events']=events;
+    if(e['type']=='refund' && source!=null && ['cash','card'].contains(source['payment'])){
+      final entries=(next['moneyEntries'] ??= <dynamic>[]) as List;
+      entries.add({'id':'refund-funds-${e['id']}','type':'refund','amount':(e['revenue'] as int)+(e['fee'] as int),'delta':-((e['revenue'] as int)+(e['fee'] as int)),'payment':source['payment'],'saleId':sourceId,'note':'Refund paid · ${source['productName'] ?? sourceId}','date':e['date'] as int});
+    } else if(e['type']=='undo' && source!=null && ['single','deal','sale'].contains(source['type']) && ['cash','card'].contains(source['payment'])){
+      final entries=(next['moneyEntries'] ??= <dynamic>[]) as List;
+      final net=(source['revenue'] as int)-(source['fee'] as int);
+      entries.add({'id':'correction-funds-${e['id']}','type':'correction','amount':net,'delta':-net,'payment':source['payment'],'saleId':sourceId,'note':'Reversed sale · ${source['productName'] ?? sourceId}','date':e['date'] as int});
+    }
+    if(attachment!=null)(next['attachments'] as List).add({...attachment,'eventId':e['id']});
+    await save(next);
+  }
   final Map<String, Future<bool>> _salesInFlight = {};
   final Map<String, Obj> _saleRequests = {};
   Future<bool> recordSale(Obj e, [Obj? attachment]) {
