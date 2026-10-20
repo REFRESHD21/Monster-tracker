@@ -9,7 +9,7 @@
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" tools:remove="android:maxSdkVersion" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-feature android:name="android.hardware.nfc" android:required="false" />
-    <application android:name=".MonsterApplication" android:label="Monster Tracker Plus" android:icon="@drawable/ic_monster"
+    <application android:name=".MonsterApplication" android:label="Business Tracker" android:icon="@drawable/ic_monster"
         android:theme="@style/AppTheme" android:allowBackup="false" android:fullBackupContent="false" android:dataExtractionRules="@xml/data_extraction_rules" android:usesCleartextTraffic="false"
         android:supportsRtl="true">
         <activity android:name=".StripeActivity" android:exported="false" android:configChanges="orientation|screenSize|keyboardHidden" />
