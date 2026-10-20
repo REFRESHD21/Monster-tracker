@@ -67,6 +67,8 @@ void main() {
         for (final key in moduleKeys) {
           expect(find.text(moduleNames[key]!), findsOneWidget);
         }
+        await tester.drag(find.byType(ListView).first, const Offset(0, 2400));
+        await tester.pumpAndSettle();
 
         await openSettings();
         final disabled = moduleKeys.first;
