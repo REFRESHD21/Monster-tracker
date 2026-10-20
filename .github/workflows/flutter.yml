@@ -3,7 +3,7 @@ on:
   push:
     branches: ['feature/flutter-universal-tracker', 'development/toggleable-business-modules']
   pull_request:
-    branches: ['feature/sheets-compatible-update']
+    branches: ['feature/sheets-compatible-update', 'development/toggleable-business-modules']
   workflow_dispatch:
 permissions:
   contents: read
