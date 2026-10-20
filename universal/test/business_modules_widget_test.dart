@@ -56,6 +56,8 @@ void main() {
 
         await tester.pumpWidget(TrackerApp(repository: repo));
         await tester.pumpAndSettle();
+        await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text('Home')));
+        await tester.pumpAndSettle();
         for (final key in moduleKeys) {
           expect(find.text(moduleNames[key]!), findsOneWidget);
         }
@@ -74,6 +76,8 @@ void main() {
           expect(moduleEnabled(repo.state, other), isTrue);
         }
         await tester.pumpWidget(TrackerApp(repository: repo));
+        await tester.pumpAndSettle();
+        await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text('Home')));
         await tester.pumpAndSettle();
         expect(find.text(moduleNames[disabled]!), findsNothing);
         for (final other in moduleKeys.skip(1)) {
