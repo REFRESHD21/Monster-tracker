@@ -114,7 +114,7 @@ class Repository {
     await save(next);return true;
   }
   final Map<String,Future<bool>> _purchasesInFlight={};
-  Future<bool> recordPurchase(List<Obj> entries) {
+  Future<bool> recordPurchase(List<Obj> entries,{bool affectFunds=false}) {
     if(entries.isEmpty) return Future<bool>.error(const FormatException('Add at least one purchase line.'));
     final batch=obj(entries.first['purchaseBatch']),id=batch['id'] as String;
     final flight=_purchasesInFlight[id];
