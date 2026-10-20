@@ -33,7 +33,7 @@ class _SaleSheetState extends State<SaleSheet> {
   bool saving = false, saved = false, gstRegistered = false, editedTotal = false;
   Obj? receipt;
   DateTime date = DateTime.now().toUtc().add(const Duration(hours:8));
-  @override void initState() {super.initState();customers=widget.customers.map(clone).toList();final subtotal=widget.cartLines==null?widget.product['sellingPrice'] as int? ?? 0:widget.cartLines!.fold<int>(0,(sum,line)=>sum+(line['unitPrice'] as int)*(line['quantity'] as int));total.text=amount(subtotal);}
+  @override void initState() {super.initState();customers=widget.customers.map(clone).toList();if(payment=='iou'&&!widget.allowIou)payment='cash';final subtotal=widget.cartLines==null?widget.product['sellingPrice'] as int? ?? 0:widget.cartLines!.fold<int>(0,(sum,line)=>sum+(line['unitPrice'] as int)*(line['quantity'] as int));total.text=amount(subtotal);}
   @override void dispose() {for(final c in [quantity,total,fee,gst,note]) {c.dispose();}super.dispose();}
   void choose(String selected) => setState(() {
     mode=selected;editedTotal=false;error='';
