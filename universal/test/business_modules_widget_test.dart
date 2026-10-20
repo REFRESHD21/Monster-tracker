@@ -60,8 +60,6 @@ void main() {
         ));
         await tester.pumpAndSettle();
         for (final key in moduleKeys) {
-          await tester.scrollUntilVisible(find.text(moduleNames[key]!), 250, scrollable: find.byType(Scrollable).first);
-          await tester.pumpAndSettle();
           expect(find.text(moduleNames[key]!), findsOneWidget);
         }
 
@@ -85,8 +83,6 @@ void main() {
         await tester.pumpAndSettle();
         expect(find.text(moduleNames[disabled]!), findsNothing);
         for (final other in moduleKeys.skip(1)) {
-          await tester.scrollUntilVisible(find.text(moduleNames[other]!), 250, scrollable: find.byType(Scrollable).first);
-          await tester.pumpAndSettle();
           expect(find.text(moduleNames[other]!), findsOneWidget);
         }
 
