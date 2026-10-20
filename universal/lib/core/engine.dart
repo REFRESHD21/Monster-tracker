@@ -5,7 +5,7 @@ import 'business_modules.dart';
 
 const legacyProduct = 'legacy-unassigned';
 const themes = ['light', 'dark', 'green', 'ocean', 'purple', 'warm neutral'];
-Obj emptyState() => {'format': 'business-tracker', 'version': 1, 'currency': 'AUD', 'timeZone': 'Australia/Perth', 'businessId': '', 'businessName': 'My business', 'theme': 'green', 'products': <dynamic>[], 'events': <dynamic>[], 'attachments': <dynamic>[], 'stocktakes': <dynamic>[], 'modules': <String,dynamic>{}, 'customers': <dynamic>[], 'customerPayments': <dynamic>[], 'retailerOffers': <dynamic>[], 'bundles': <dynamic>[], 'legacy': null, 'legacyCount': 0};
+Obj emptyState() => {'format': 'business-tracker', 'version': 1, 'currency': 'AUD', 'timeZone': 'Australia/Perth', 'businessId': '', 'businessName': 'My business', 'theme': 'green', 'products': <dynamic>[], 'events': <dynamic>[], 'attachments': <dynamic>[], 'moneyEntries': <dynamic>[], 'stocktakes': <dynamic>[], 'modules': <String,dynamic>{}, 'customers': <dynamic>[], 'customerPayments': <dynamic>[], 'retailerOffers': <dynamic>[], 'bundles': <dynamic>[], 'legacy': null, 'legacyCount': 0};
 class Lot {
   final String key, product; final int age; int quantity, cost;
   Lot(this.key, this.product, this.age, this.quantity, this.cost);
