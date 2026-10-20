@@ -124,7 +124,7 @@ class Repository {
     future.then<void>((_)=>_purchasesInFlight.remove(id),onError:(Object error,StackTrace stack){_purchasesInFlight.remove(id);});
     return future;
   }
-  Future<bool> _recordPurchase(List<Obj> entries,String purchaseId) async {
+  Future<bool> _recordPurchase(List<Obj> entries,String purchaseId,bool affectFunds) async {
     final saved=objects(state['events']).where((e)=>e['purchaseBatch'] is Map && obj(e['purchaseBatch'])['id']==purchaseId).toList()
       ..sort((a,b)=>'${obj(a['purchaseLine'])['id']}'.compareTo('${obj(b['purchaseLine'])['id']}'));
     if(saved.isNotEmpty){
