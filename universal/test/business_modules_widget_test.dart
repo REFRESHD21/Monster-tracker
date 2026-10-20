@@ -59,7 +59,7 @@ void main() {
           matching: find.text('Home'),
         ));
         await tester.pumpAndSettle();
-        await tester.drag(find.byType(ListView).first, const Offset(0, 2400));
+        await tester.drag(find.byType(ListView).first, const Offset(0, -2400));
         await tester.pumpAndSettle();
         await tester.ensureVisible(find.text('More tools'));
         await tester.tap(find.text('More tools'));
@@ -86,7 +86,7 @@ void main() {
           matching: find.text('Home'),
         ));
         await tester.pumpAndSettle();
-        await tester.drag(find.byType(ListView).first, const Offset(0, 2400));
+        await tester.drag(find.byType(ListView).first, const Offset(0, -2400));
         await tester.pumpAndSettle();
         await tester.ensureVisible(find.text('More tools'));
         await tester.tap(find.text('More tools'));
