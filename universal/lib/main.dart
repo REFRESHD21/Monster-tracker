@@ -75,14 +75,58 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
   Widget action(String label,IconData icon,VoidCallback fn)=>Padding(padding:const EdgeInsets.symmetric(vertical:5),child:OutlinedButton.icon(onPressed:fn,icon:Icon(icon),label:Padding(padding:const EdgeInsets.all(12),child:Text(label))));
   Widget metric(BuildContext c,String label,String value)=>Card(color:Theme.of(c).colorScheme.surfaceContainerHighest,child:Padding(padding:const EdgeInsets.all(18),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(label),const SizedBox(height:8),Text(value,style:const TextStyle(fontSize:27,fontWeight:FontWeight.w700))])));
   String productName(String? id)=>objects(s['products']).where((p)=>p['id']==id).map((p)=>'${p['name']}${p['variant']==''?'':' · ${p['variant']}'}').firstOrNull ?? 'Business expense';
+
+  List<Obj> get moneyEntries=>objects(s['moneyEntries']??const <dynamic>[]);
+  int get businessBalance=>moneyEntries.fold<int>(0,(sum,e)=>sum+(e['delta'] as int? ?? 0));
+  Future<void> moneyAction(BuildContext c,String kind,{StateSetter? refresh}) async {
+    final current=businessBalance;
+    final amountController=TextEditingController(text:kind=='recount'?amount(current<0?0:current):''),noteController=TextEditingController();
+    final result=await showDialog<Obj>(context:c,builder:(d)=>AlertDialog(
+      title:Text(switch(kind){'add'=>'Add money','remove'=>'Take money out','recount'=>'Recount business funds',_=>'Money entry'}),
+      content:Column(mainAxisSize:MainAxisSize.min,children:[
+        TextField(controller:amountController,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:InputDecoration(labelText:kind=='recount'?'Actual amount counted (AUD)':'Amount (AUD)')),
+        TextField(controller:noteController,decoration:const InputDecoration(labelText:'Note / reason (optional)')),
+      ]),
+      actions:[
+        TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel')),
+        FilledButton(onPressed:(){try{final n=cents(amountController.text);if(kind!='recount'&&n<1)throw const FormatException('Enter an amount greater than zero.');final delta=kind=='add'?n:kind=='remove'?-n:n-current;Navigator.pop(d,{'id':const Uuid().v4(),'type':kind,'amount':n,'delta':delta,'note':noteController.text.trim(),'date':DateTime.now().millisecondsSinceEpoch});}catch(e){ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text('${e}')));}},child:const Text('Save entry')),
+      ]));
+    amountController.dispose();noteController.dispose();
+    if(result==null||!c.mounted)return;
+    await perform(c,()async{final next=clone(s);final entries=(next['moneyEntries']??=<dynamic>[]) as List;entries.add(result);await repo.save(next);},message:kind=='recount'?'Recount saved. Previous entries retained.':'Money entry saved.');
+    if(refresh!=null)refresh((){});
+  }
+  Future<void> moneyManagement(BuildContext c) async {
+    await showModalBottomSheet<void>(context:c,isScrollControlled:true,showDragHandle:true,builder:(b)=>StatefulBuilder(builder:(b,update){
+      final entries=moneyEntries;final balance=businessBalance;
+      return SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(20,8,20,20),child:SizedBox(height:MediaQuery.sizeOf(b).height*.78,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+        Text('Business money',style:Theme.of(b).textTheme.headlineSmall),const SizedBox(height:8),
+        Text(money(balance),style:Theme.of(b).textTheme.headlineLarge?.copyWith(fontWeight:FontWeight.w800)),
+        const Text('Paid cash and card sales are added automatically, net of recorded fees. IOUs are not counted until money is actually received. Recount records the difference without rewriting earlier entries.'),
+        const SizedBox(height:12),
+        Wrap(spacing:8,runSpacing:8,children:[
+          FilledButton.icon(onPressed:()=>moneyAction(c,'add',refresh:update),icon:const Icon(Icons.add),label:const Text('Add money')),
+          OutlinedButton.icon(onPressed:()=>moneyAction(c,'remove',refresh:update),icon:const Icon(Icons.remove),label:const Text('Take out')),
+          OutlinedButton.icon(onPressed:()=>moneyAction(c,'recount',refresh:update),icon:const Icon(Icons.calculate_outlined),label:const Text('Recount')),
+        ]),
+        const Divider(height:24),const Text('Recent entries',style:TextStyle(fontWeight:FontWeight.w700)),const SizedBox(height:8),
+        Expanded(child:entries.isEmpty?const Center(child:Text('No money entries yet. Record a sale or recount your starting funds.')):ListView(children:entries.reversed.take(100).map((e){
+          final delta=e['delta'] as int? ?? 0;final kind=e['type'];
+          final label=switch(kind){'recount'=>'Recount · counted ${money(e['amount'] as int)}','sale'=>'Sale proceeds','refund'=>'Refund paid','correction'=>'Sale reversed','add'=>'Money added','remove'=>'Money taken out','restock'=>'Stock purchase',_=>'Funds movement'};
+          return ListTile(contentPadding:EdgeInsets.zero,leading:Icon(kind=='recount'?Icons.calculate_outlined:delta<0?Icons.arrow_upward:Icons.arrow_downward),title:Text(e['note'] as String? ?? label),subtitle:Text('${displayDate(e['date'] as int?)} · $label'),trailing:Text('${delta>0?'+':''}${money(delta)}',style:TextStyle(fontWeight:FontWeight.w700,color:delta<0?Theme.of(b).colorScheme.error:Theme.of(b).colorScheme.primary)));
+        }).toList())),
+      ]))));
+    }));
+  }
+
   List<Widget> home(BuildContext c) {
     final a=accounts,totals=a.summary(), low=activeProducts(s).where((p)=>a.book.stock(p['id'])<(p['minimum'] as int)).toList();
     final sales=a.salesProfit(objects(s['products']));
-    return [action('Quick sale',Icons.point_of_sale,()=>recordSale(c)),action('Add stock',Icons.add_box_outlined,()=>pickStock(c)),action('Products',Icons.inventory_2_outlined,()=>setState(()=>tab=1)),if(moduleEnabled(s,moduleCustomerAccounts))action(moduleNames[moduleCustomerAccounts]!,Icons.people_outline,()=>openBusinessModule(c,moduleCustomerAccounts)),if(moduleEnabled(s,modulePriceComparison))action(moduleNames[modulePriceComparison]!,Icons.storefront_outlined,()=>openBusinessModule(c,modulePriceComparison)),if(moduleEnabled(s,moduleForecasting))action(moduleNames[moduleForecasting]!,Icons.trending_up,()=>openBusinessModule(c,moduleForecasting)),if(moduleEnabled(s,moduleSmartRestock))action(moduleNames[moduleSmartRestock]!,Icons.shopping_cart_outlined,()=>openBusinessModule(c,moduleSmartRestock)),if(moduleEnabled(s,moduleBundles))action(moduleNames[moduleBundles]!,Icons.widgets_outlined,()=>manageBundles(c)),title('Your business at a glance'),text('Offline records • AUD • Perth reporting dates'),salesOverview(c,sales),Row(children:[Expanded(child:metric(c,'Units on hand','${a.book.lots.values.fold<int>(0,(n,l)=>n+l.quantity)}')),const SizedBox(width:10),Expanded(child:metric(c,'Stock value',money(a.book.value)))]),metric(c,'Estimated net profit · all history',money(totals['netProfit'])),
+    return [Card(child:Padding(padding:const EdgeInsets.all(18),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('BUSINESS FUNDS',style:Theme.of(c).textTheme.labelMedium),const SizedBox(height:6),Text(money(businessBalance),style:Theme.of(c).textTheme.headlineMedium?.copyWith(fontWeight:FontWeight.w800)),const SizedBox(height:4),Text('Paid sales added automatically',style:Theme.of(c).textTheme.bodySmall),Align(alignment:Alignment.centerLeft,child:TextButton.icon(onPressed:()=>moneyManagement(c),icon:const Icon(Icons.account_balance_wallet_outlined),label:const Text('Manage money')))]))),action('Quick sale',Icons.point_of_sale,()=>recordSale(c)),action('Add stock',Icons.add_box_outlined,()=>pickStock(c)),action('Manage money',Icons.account_balance_wallet_outlined,()=>moneyManagement(c)),action('Products',Icons.inventory_2_outlined,()=>setState(()=>tab=1)),if(moduleEnabled(s,moduleCustomerAccounts))action(moduleNames[moduleCustomerAccounts]!,Icons.people_outline,()=>openBusinessModule(c,moduleCustomerAccounts)),if(moduleEnabled(s,modulePriceComparison))action(moduleNames[modulePriceComparison]!,Icons.storefront_outlined,()=>openBusinessModule(c,modulePriceComparison)),if(moduleEnabled(s,moduleForecasting))action(moduleNames[moduleForecasting]!,Icons.trending_up,()=>openBusinessModule(c,moduleForecasting)),if(moduleEnabled(s,moduleSmartRestock))action(moduleNames[moduleSmartRestock]!,Icons.shopping_cart_outlined,()=>openBusinessModule(c,moduleSmartRestock)),if(moduleEnabled(s,moduleBundles))action(moduleNames[moduleBundles]!,Icons.widgets_outlined,()=>manageBundles(c)),title('Your business at a glance'),text('Offline records • AUD • Perth reporting dates'),salesOverview(c,sales),Row(children:[Expanded(child:metric(c,'Units on hand','${a.book.lots.values.fold<int>(0,(n,l)=>n+l.quantity)}')),const SizedBox(width:10),Expanded(child:metric(c,'Stock value',money(a.book.value)))]),metric(c,'Estimated net profit · all history',money(totals['netProfit'])),
       if(objects(s['products']).isEmpty)...[title('Start with your first product'),text('Add any drink, skincare item or other product. This installation starts empty.'),action('Add product',Icons.add,()=>editProduct(c))],
       if(s['legacy']!=null)text('Your Monster history has been imported. Original records and unknown dates are retained.'),
       if(low.isNotEmpty)...[title('Low-stock alerts'),for(final p in low)ListTile(leading:const Icon(Icons.warning_amber),title:Text(productName(p['id'])),subtitle:Text('${a.book.stock(p['id'])} left · minimum ${p['minimum']}'),onTap:()=>product(c,p))],
-      title('Quick actions'),action('Purchase history',Icons.shopping_bag_outlined,()=>purchaseLedger(c)),action('Record an expense',Icons.receipt_outlined,()=>transaction(c,'expense',null)),action('View products / stock',Icons.inventory_2_outlined,()=>setState(()=>tab=1)),action('Back up your records',Icons.save_alt,()=>exportBackup(c,true)),text('A recorded card sale or refund is a manual bookkeeping entry. This app does not charge or refund a payment card.')];
+      title('Quick actions'),action('Purchase history',Icons.shopping_bag_outlined,()=>purchaseLedger(c)),action('Record an expense',Icons.receipt_outlined,()=>transaction(c,'expense',null)),action('View products / stock',Icons.inventory_2_outlined,()=>setState(()=>tab=1)),action('Back up your records',Icons.save_alt,()=>exportBackup(c,true)),text('Card sales are bookkeeping entries only. Funds track recorded money movements; the app does not charge or refund a payment card.')];
   }
   Widget salesOverview(BuildContext c,Obj sales){
     final colors=Theme.of(c).colorScheme;
