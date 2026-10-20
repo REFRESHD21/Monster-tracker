@@ -68,7 +68,7 @@ class Repository {
     });
     revision=expectedRevision+1;state=clone(candidate);
   }
-  Future<void> append(Obj e, [Obj? attachment]) async {final next=clone(state);(next['events'] as List).add(e);if(attachment!=null)(next['attachments'] as List).add({...attachment,'eventId':e['id']});await save(next);}
+  Future<void> append(Obj e, [Obj? attachment, Obj? moneyEntry]) async {final next=clone(state);(next['events'] as List).add(e);if(attachment!=null)(next['attachments'] as List).add({...attachment,'eventId':e['id']});if(moneyEntry!=null){final entries=(next['moneyEntries'] ??= <dynamic>[]) as List;entries.add(moneyEntry);}await save(next);}
   final Map<String, Future<bool>> _salesInFlight = {};
   final Map<String, Obj> _saleRequests = {};
   Future<bool> recordSale(Obj e, [Obj? attachment]) {

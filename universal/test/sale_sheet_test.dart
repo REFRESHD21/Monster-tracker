@@ -8,7 +8,7 @@ Obj product({int? deal}) => {'id':'flavour-test-001','name':'Mango','variant':'5
 Future<void> open(WidgetTester t,Obj p,Future<void> Function(Obj,Obj?) save,{String payment='cash'}) async {
   t.view.physicalSize=const Size(420,900);t.view.devicePixelRatio=1;
   addTearDown(t.view.resetPhysicalSize);addTearDown(t.view.resetDevicePixelRatio);
-  await t.pumpWidget(MaterialApp(home:Scaffold(body:Builder(builder:(c)=>TextButton(onPressed:()=>showModalBottomSheet<bool>(context:c,isScrollControlled:true,builder:(_)=>SaleSheet(product:p,stock:20,payment:payment,onSave:save,pickReceipt:()async=>null)),child:const Text('Open'))))));
+  await t.pumpWidget(MaterialApp(home:Scaffold(body:Builder(builder:(c)=>TextButton(onPressed:()=>showModalBottomSheet<bool>(context:c,isScrollControlled:true,builder:(_)=>SaleSheet(product:p,stock:20,payment:payment,onAddCustomer:(customer)async{},onSave:save,pickReceipt:()async=>null)),child:const Text('Open'))))));
   await t.tap(find.text('Open'));await t.pumpAndSettle();
 }
 void main(){
@@ -51,7 +51,7 @@ void main(){
     final cartProduct=<String,dynamic>{'id':'cart','name':'Sale cart','variant':'','sellingPrice':1200};
     t.view.physicalSize=const Size(420,900);t.view.devicePixelRatio=1;
     addTearDown(t.view.resetPhysicalSize);addTearDown(t.view.resetDevicePixelRatio);
-    await t.pumpWidget(MaterialApp(home:Scaffold(body:Builder(builder:(c)=>TextButton(onPressed:()=>showModalBottomSheet<bool>(context:c,isScrollControlled:true,builder:(_)=>SaleSheet(product:cartProduct,cartLines:lines,stock:100,payment:'cash',onSave:(e,a)async{saved=e;},pickReceipt:()async=>null)),child:const Text('Open cart'))))));
+    await t.pumpWidget(MaterialApp(home:Scaffold(body:Builder(builder:(c)=>TextButton(onPressed:()=>showModalBottomSheet<bool>(context:c,isScrollControlled:true,builder:(_)=>SaleSheet(product:cartProduct,cartLines:lines,stock:100,payment:'cash',onAddCustomer:(customer)async{},onSave:(e,a)async{saved=e;},pickReceipt:()async=>null)),child:const Text('Open cart'))))));
     await t.tap(find.text('Open cart'));await t.pumpAndSettle();
     expect(find.text('1 × Starter set · \$5.00'),findsOneWidget);
     expect(find.text('2 × Extra item · \$7.00'),findsOneWidget);
