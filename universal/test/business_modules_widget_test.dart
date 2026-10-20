@@ -59,9 +59,9 @@ void main() {
           matching: find.text('Home'),
         ));
         await tester.pumpAndSettle();
-        await tester.drag(find.byType(ListView).first, const Offset(0, 2400));
-        await tester.pumpAndSettle();
         for (final key in moduleKeys) {
+          await tester.scrollUntilVisible(find.text(moduleNames[key]!), 250, scrollable: find.byType(ListView).first);
+          await tester.pumpAndSettle();
           expect(find.text(moduleNames[key]!), findsOneWidget);
         }
 
@@ -83,10 +83,10 @@ void main() {
           matching: find.text('Home'),
         ));
         await tester.pumpAndSettle();
-        await tester.drag(find.byType(ListView).first, const Offset(0, 2400));
-        await tester.pumpAndSettle();
         expect(find.text(moduleNames[disabled]!), findsNothing);
         for (final other in moduleKeys.skip(1)) {
+          await tester.scrollUntilVisible(find.text(moduleNames[other]!), 250, scrollable: find.byType(ListView).first);
+          await tester.pumpAndSettle();
           expect(find.text(moduleNames[other]!), findsOneWidget);
         }
 
