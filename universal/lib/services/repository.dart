@@ -93,6 +93,10 @@ class Repository {
     if(e['type']!='sale')throw const FormatException('Expected a sale.');
     final next=clone(state);(next['events'] as List).add(e);if(['cash','card'].contains(e['payment']))next['lastPayment']=e['payment'];
     if(attachment!=null)(next['attachments'] as List).add({...attachment,'eventId':id});
+    if(['cash','card'].contains(e['payment'])){
+      final entries=(next['moneyEntries'] ??= <dynamic>[]) as List;
+      entries.add({'id':'sale-funds-$id','type':'sale','amount':e['revenue'],'delta':(e['revenue'] as int)-(e['fee'] as int),'payment':e['payment'],'saleId':id,'note':'Sale proceeds · ${e['productName'] ?? id}','date':e['date'] as int});
+    }
     await save(next);return true;
   }
   final Map<String,Future<bool>> _purchasesInFlight={};
