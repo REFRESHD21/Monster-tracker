@@ -65,4 +65,21 @@ void main(){
     ]);
     expect(saved!['standaloneAllocations'],[{'productId':'individual-c-001','quantity':2}]);
   });
+
+  testWidgets('mix-and-match applies the configured pair price across different products',(t)async{
+    Obj? saved;
+    final lines=<Obj>[
+      {'kind':'product','id':'mix-a-001','name':'Ultra Paradise','quantity':1,'unitPrice':350},
+      {'kind':'product','id':'mix-b-001','name':'Ultra Violet','quantity':1,'unitPrice':350},
+    ];
+    final cartProduct=<String,dynamic>{'id':'cart-mix','name':'Sale cart','variant':'','sellingPrice':700};
+    await t.pumpWidget(MaterialApp(home:Scaffold(body:Builder(builder:(c)=>TextButton(onPressed:()=>showModalBottomSheet<bool>(context:c,isScrollControlled:true,builder:(_)=>SaleSheet(product:cartProduct,cartLines:lines,stock:100,payment:'cash',onSave:(e,a)async{saved=e;},pickReceipt:()async=>null)),child:const Text('Open mix cart'))))));
+    await t.tap(find.text('Open mix cart'));await t.pumpAndSettle();
+    expect(find.text('Apply mix-and-match deal'),findsOneWidget);
+    await t.tap(find.text('Apply mix-and-match deal'));await t.pumpAndSettle();
+    expect(t.widget<TextField>(find.byType(TextField).at(1)).controller!.text,'6.00');
+    await t.tap(find.byKey(const ValueKey('confirm-sale')));await t.pumpAndSettle();
+    expect(saved!['revenue'],600);
+    expect(saved!['saleOption'],'mix-match');
+  });
 }
