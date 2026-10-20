@@ -20,9 +20,9 @@ void main(){
   test('same sale confirmation is durable and deduplicated across repository reopen',()async{
     var r=await Repository.open();final s=clone(r.state);s['products']=[{'id':'repo-product-001','name':'Drink','category':'','variant':'','sellingPrice':350,'purchaseCost':100,'minimum':0,'barcode':'','photo':null}];await r.save(s);
     await r.append(event(id:'repo-restock-001',type:'restock',quantity:4,productId:'repo-product-001',cost:400));
-    final sale=event(id:'repo-sale-00001',type:'sale',quantity:2,productId:'repo-product-001',revenue:600,payment:'card');
-    final results=await Future.wait(List.generate(30,(_)=>r.recordSale(sale)));expect(results.every((v)=>v),true);expect(objects(r.state['events']).length,2);
-    await r.close();r=await Repository.open();expect(await r.recordSale(sale),false);expect(validateState(r.state).book.stock('repo-product-001'),2);expect(r.state['lastPayment'],'card');expect(validateState(r.state).summary()['revenue'],600);
+    final sale=event(id:'repo-sale-00001',type:'sale',quantity:2,productId:'repo-product-001',revenue:600,fee:50,payment:'card');
+    final results=await Future.wait(List.generate(30,(_)=>r.recordSale(sale)));expect(results.every((v)=>v),true);expect(objects(r.state['events']).length,2);expect(objects(r.state['moneyEntries']),hasLength(1));expect(objects(r.state['moneyEntries']).single['delta'],550);
+    await r.close();r=await Repository.open();expect(await r.recordSale(sale),false);expect(validateState(r.state).book.stock('repo-product-001'),2);expect(r.state['lastPayment'],'card');expect(validateState(r.state).summary()['revenue'],600);expect(objects(r.state['moneyEntries']),hasLength(1));expect(objects(r.state['moneyEntries']).single['delta'],550);
     await expectLater(r.recordSale({...sale,'revenue':700}),throwsFormatException);await r.close();
   });
   test('bundle sale is idempotent across confirmation and backup restore',()async{
