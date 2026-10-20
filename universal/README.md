@@ -1,3 +1,28 @@
+# Business Tracker 2.3.3 (20)
+
+This release adds a persisted **Business Funds** ledger to the Flutter app. Cash
+and card sale proceeds increase funds by the recorded revenue less recorded
+payment fees. IOU sales do not increase available funds until money is actually
+received. Sale IDs are deduplicated so retries/reopening do not count proceeds
+twice; undoing a paid sale reverses its funds entry. Manual Add money, Take out
+and Recount actions remain available, and stock purchases reduce funds only
+when the purchase form's funds checkbox is enabled.
+
+The sale cart supports an opt-in **mix-and-match pair deal** for individual
+products, including different drink flavours. The default pair total is AUD
+$6.00 and can be edited in the sale sheet. Every two individual cans receive
+the configured pair price; an odd leftover can keeps its normal unit price.
+Bundles are excluded from pair pricing. The saved sale total is the amount
+entered/confirmed at sale time; historical sale totals are not repriced.
+
+Android package remains `au.monster.tracker.plus`; this update uses
+versionCode **20** and versionName **2.3.3**. Export a full backup before
+installing an update, and install over the existing app rather than uninstalling
+it so local records are retained. GitHub Actions verifies the release artifact's
+package, version, signing certificate and non-debuggable status before upload.
+
+---
+
 # Business Tracker 2.2.0 (16)
 
 Current Flutter improvements preserve sale totals and existing records, add quick
