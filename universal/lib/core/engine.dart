@@ -253,6 +253,15 @@ Accounts validateState(Obj s) {
     final barcode=string(p['barcode'],80);if(barcode.isNotEmpty && !barcodes.add(barcode)) throw const FormatException('Barcode already belongs to another product.');
     if(p['photo'] != null){verifyAttachment(obj(p['photo']));if(p['photo']['mime']=='application/pdf')throw const FormatException('Product photos must be JPG or PNG images.');}
   }
+  final moneyIds=<String>{};
+  for(final entry in objects(s['moneyEntries'] ?? const <dynamic>[])){
+    final id=string(entry['id'],100),type=string(entry['type'],30);
+    if(id.isEmpty || !moneyIds.add(id) || !['add','remove','recount','sale','refund','correction','restock'].contains(type))throw const FormatException('Invalid business funds entry.');
+    integer(entry['amount'],0,1000000000);integer(entry['delta'],-1000000000,1000000000);integer(entry['date'],946684800000,4102444800000);string(entry['note'] ?? '',240);
+    if(type=='recount' && (entry['amount'] as int)<0)throw const FormatException('Invalid funds recount.');
+    if(entry['saleId']!=null)string(entry['saleId'],100);
+    if(entry['payment']!=null && !['cash','card','iou','none'].contains(entry['payment']))throw const FormatException('Invalid funds payment method.');
+  }
   final customerIds=<String>{};
   for(final customer in objects(s['customers'] ?? const <dynamic>[])){final id=string(customer['id'],100);if(id.isEmpty || !customerIds.add(id) || string(customer['name'],120).trim().isEmpty)throw const FormatException('Invalid customer record.');if(customer['phone']!=null)string(customer['phone'],40);integer(customer['createdAt'],946684800000,4102444800000);}
   final paymentIds=<String>{};
