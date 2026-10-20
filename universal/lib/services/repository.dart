@@ -119,7 +119,7 @@ class Repository {
     final batch=obj(entries.first['purchaseBatch']),id=batch['id'] as String;
     final flight=_purchasesInFlight[id];
     if(flight!=null)return flight;
-    final future=_recordPurchase(entries,id);
+    final future=_recordPurchase(entries,id,affectFunds);
     _purchasesInFlight[id]=future;
     future.then<void>((_)=>_purchasesInFlight.remove(id),onError:(Object error,StackTrace stack){_purchasesInFlight.remove(id);});
     return future;
