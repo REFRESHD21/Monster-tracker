@@ -354,7 +354,7 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
     if(available.isEmpty){ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content:Text('Add or restore a product before recording a purchase.')));return;}
     final supplier=TextEditingController(),location=TextEditingController(),reference=TextEditingController(),note=TextEditingController();
     final lines=[_PurchaseLineDraft(available.first['id'] as String)];
-    var date=DateTime.now().toUtc().add(const Duration(hours:8));var unknownDate=false;
+    var date=DateTime.now().toUtc().add(const Duration(hours:8));var unknownDate=false,affectFunds=false;
     await showDialog<void>(context:c,builder:(d)=>StatefulBuilder(builder:(d,update)=>AlertDialog(title:const Text('Record completed purchase'),content:SizedBox(width:520,child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
       const Text('This records stock actually acquired. Each line creates one FIFO cost lot; no sale or operating expense is created.'),
       field(supplier,'Retailer / supplier'),field(location,'Store location (optional)'),field(reference,'Receipt reference (optional)'),
