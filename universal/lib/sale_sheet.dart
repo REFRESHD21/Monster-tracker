@@ -12,11 +12,13 @@ class SaleSheet extends StatefulWidget {
   final int stock;
   final String payment;
   final List<Obj> customers;
+  final bool allowIou;
+  final Future<void> Function(Obj customer) onAddCustomer;
   final Obj? bundle;
   final List<Obj>? cartLines;
   final Future<void> Function(Obj event, Obj? receipt) onSave;
   final Future<Obj?> Function() pickReceipt;
-  const SaleSheet({super.key, required this.product, required this.stock, required this.payment, this.customers = const <Obj>[], this.bundle, this.cartLines, required this.onSave, required this.pickReceipt});
+  const SaleSheet({super.key, required this.product, required this.stock, required this.payment, this.customers = const <Obj>[], this.allowIou = false, required this.onAddCustomer, this.bundle, this.cartLines, required this.onSave, required this.pickReceipt});
   @override State<SaleSheet> createState() => _SaleSheetState();
 }
 
@@ -27,10 +29,11 @@ class _SaleSheetState extends State<SaleSheet> {
   late String payment = widget.payment;
   String mode = 'single', error = '';
   String? customerId;
+  late List<Obj> customers;
   bool saving = false, saved = false, gstRegistered = false, editedTotal = false;
   Obj? receipt;
   DateTime date = DateTime.now().toUtc().add(const Duration(hours:8));
-  @override void initState() {super.initState();final subtotal=widget.cartLines==null?widget.product['sellingPrice'] as int? ?? 0:widget.cartLines!.fold<int>(0,(sum,line)=>sum+(line['unitPrice'] as int)*(line['quantity'] as int));total.text=amount(subtotal);}
+  @override void initState() {super.initState();customers=widget.customers.map(clone).toList();final subtotal=widget.cartLines==null?widget.product['sellingPrice'] as int? ?? 0:widget.cartLines!.fold<int>(0,(sum,line)=>sum+(line['unitPrice'] as int)*(line['quantity'] as int));total.text=amount(subtotal);}
   @override void dispose() {for(final c in [quantity,total,fee,gst,note]) {c.dispose();}super.dispose();}
   void choose(String selected) => setState(() {
     mode=selected;editedTotal=false;error='';
@@ -39,6 +42,27 @@ class _SaleSheetState extends State<SaleSheet> {
     if(q!=null && q>0 && q<=10000){try{total.text=amount(saleTotal(widget.product,q,deal:selected=='deal'));}on FormatException{/* Validate on confirmation. */}}
   });
   Widget input(TextEditingController controller,String label,{ValueChanged<String>? changed}) => Padding(padding:const EdgeInsets.symmetric(vertical:6),child:TextField(controller:controller,onChanged:changed,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:InputDecoration(labelText:label)));
+  Future<void> addCustomer() async {
+    final name=TextEditingController(), phone=TextEditingController();
+    try {
+      final accepted=await showDialog<bool>(context:context,builder:(c)=>AlertDialog(
+        title:const Text('Add customer'),
+        content:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
+          TextField(controller:name,autofocus:true,decoration:const InputDecoration(labelText:'Name or nickname')),
+          TextField(controller:phone,decoration:const InputDecoration(labelText:'Optional contact')),
+        ])),
+        actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('Save customer'))],
+      ));
+      if(accepted!=true)return;
+      final label=name.text.trim();
+      if(label.isEmpty){setState(()=>error='Enter a customer name or nickname.');return;}
+      final customer=<String,dynamic>{'id':const Uuid().v4(),'name':label,'phone':phone.text.trim().isEmpty?null:phone.text.trim(),'createdAt':DateTime.now().millisecondsSinceEpoch};
+      await widget.onAddCustomer(customer);
+      if(!mounted)return;
+      setState((){customers.add(customer);customerId=customer['id'] as String;payment='iou';error='';});
+    }catch(e){if(mounted)setState(()=>error='$e');}
+    finally{name.dispose();phone.dispose();}
+  }
   Future<void> submit() async {
     // Set synchronously before the first await; two taps share one draft ID.
     if(saving || saved)return;
@@ -123,9 +147,11 @@ class _SaleSheetState extends State<SaleSheet> {
         ],
         if(widget.cartLines!=null)input(total,'Total (AUD)',changed:(_)=>setState(()=>editedTotal=true)),
         const Text('Payment recorded'),
-        Wrap(spacing:12,children:[for(final p in ['cash','card',if(widget.customers.isNotEmpty)'iou'])ChoiceChip(label:Text(p=='cash'?'Cash':p=='card'?'Card / bank':'IOU'),selected:payment==p,onSelected:(_)=>setState((){payment=p;if(p=='iou')fee.text='0.00';}))]),
-        if(payment=='iou')...[
-          DropdownButtonFormField<String>(value:customerId,decoration:const InputDecoration(labelText:'Customer'),items:[for(final customer in widget.customers)DropdownMenuItem(value:customer['id'] as String,child:Text(customer['name'] as String))],onChanged:(value)=>setState(()=>customerId=value)),
+        Wrap(spacing:12,children:[for(final p in ['cash','card',if(widget.allowIou)'iou'])ChoiceChip(label:Text(p=='cash'?'Cash':p=='card'?'Card / bank':'IOU'),selected:payment==p,onSelected:(_)=>setState((){payment=p;if(p=='iou')fee.text='0.00';}))]),
+        if(payment=='iou' && widget.allowIou)...[
+          if(customers.isNotEmpty)DropdownButtonFormField<String>(key:ValueKey('iou-customer-${customers.length}'),value:customers.any((customer)=>customer['id']==customerId)?customerId:null,decoration:const InputDecoration(labelText:'Customer'),items:[for(final customer in customers)DropdownMenuItem(value:customer['id'] as String,child:Text(customer['name'] as String))],onChanged:(value)=>setState(()=>customerId=value)),
+          if(customers.isEmpty)const Text('Add a customer before recording this IOU.'),
+          Align(alignment:Alignment.centerLeft,child:TextButton.icon(onPressed:saving?null:addCustomer,icon:const Icon(Icons.person_add_alt_1),label:Text(customers.isEmpty?'Add customer':'Add another customer'))),
           const Text('This completed sale is recorded in sales revenue and the customer’s outstanding balance. Payments received later do not create new sales.'),
         ],
         ExpansionTile(tilePadding:EdgeInsets.zero,title:const Text('More details'),subtitle:const Text('Fee, GST, receipt, date or note'),children:[
