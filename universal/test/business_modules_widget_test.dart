@@ -73,9 +73,7 @@ void main() {
         for (final other in moduleKeys.skip(1)) {
           expect(moduleEnabled(repo.state, other), isTrue);
         }
-        await tester.pumpWidget(TrackerApp(repository: repo));
-        await tester.pumpAndSettle();
-        await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text('Home')));
+        await tester.pumpWidget(TrackerApp(key: UniqueKey(), repository: repo));
         await tester.pumpAndSettle();
         expect(find.text(moduleNames[disabled]!), findsNothing);
         for (final other in moduleKeys.skip(1)) {
