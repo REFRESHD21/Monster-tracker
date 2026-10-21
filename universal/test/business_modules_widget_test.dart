@@ -61,11 +61,7 @@ void main() {
         await tester.pumpAndSettle();
         for (final key in moduleKeys) {
           final homeAction = find.text(moduleNames[key]!);
-          await tester.scrollUntilVisible(
-            homeAction,
-            240,
-            scrollable: find.byType(Scrollable).first,
-          );
+          await tester.ensureVisible(homeAction);
           await tester.pumpAndSettle();
           expect(homeAction, findsOneWidget);
         }
@@ -91,11 +87,7 @@ void main() {
         expect(find.text(moduleNames[disabled]!), findsNothing);
         for (final other in moduleKeys.skip(1)) {
           final homeAction = find.text(moduleNames[other]!);
-          await tester.scrollUntilVisible(
-            homeAction,
-            240,
-            scrollable: find.byType(Scrollable).first,
-          );
+          await tester.ensureVisible(homeAction);
           await tester.pumpAndSettle();
           expect(homeAction, findsOneWidget);
         }
