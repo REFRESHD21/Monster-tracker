@@ -56,7 +56,7 @@ void main() {
 
         await tester.tap(find.descendant(
           of: find.byType(NavigationBar),
-          matching: find.text('Home'),
+          matching: find.byIcon(Icons.space_dashboard_outlined),
         ));
         await tester.pumpAndSettle();
         for (final key in moduleKeys) {
@@ -81,7 +81,7 @@ void main() {
         }
         await tester.tap(find.descendant(
           of: find.byType(NavigationBar),
-          matching: find.text('Home'),
+          matching: find.byIcon(Icons.space_dashboard_outlined),
         ));
         await tester.pumpAndSettle();
         expect(find.text(moduleNames[disabled]!), findsNothing);
