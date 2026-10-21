@@ -54,7 +54,10 @@ void main() {
           }
         }
 
-        await tester.pumpWidget(TrackerApp(key: UniqueKey(), repository: repo));
+        await tester.tap(find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.text('Home'),
+        ));
         await tester.pumpAndSettle();
         for (final key in moduleKeys) {
           final homeAction = find.text(moduleNames[key]!);
@@ -80,7 +83,10 @@ void main() {
         for (final other in moduleKeys.skip(1)) {
           expect(moduleEnabled(repo.state, other), isTrue);
         }
-        await tester.pumpWidget(TrackerApp(key: UniqueKey(), repository: repo));
+        await tester.tap(find.descendant(
+          of: find.byType(NavigationBar),
+          matching: find.text('Home'),
+        ));
         await tester.pumpAndSettle();
         expect(find.text(moduleNames[disabled]!), findsNothing);
         for (final other in moduleKeys.skip(1)) {
