@@ -54,9 +54,7 @@ void main() {
           }
         }
 
-        await tester.pumpWidget(TrackerApp(repository: repo));
-        await tester.pumpAndSettle();
-        await tester.tap(find.descendant(of: find.byType(NavigationBar), matching: find.text('Home')));
+        await tester.pumpWidget(TrackerApp(key: UniqueKey(), repository: repo));
         await tester.pumpAndSettle();
         for (final key in moduleKeys) {
           expect(find.text(moduleNames[key]!), findsOneWidget);
