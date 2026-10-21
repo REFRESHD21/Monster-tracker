@@ -25,6 +25,22 @@ void main(){
     await r.close();r=await Repository.open();expect(await r.recordSale(sale),false);expect(validateState(r.state).book.stock('repo-product-001'),2);expect(r.state['lastPayment'],'card');expect(validateState(r.state).summary()['revenue'],600);expect(objects(r.state['moneyEntries']),hasLength(1));expect(objects(r.state['moneyEntries']).single['delta'],550);
     await expectLater(r.recordSale({...sale,'revenue':700}),throwsFormatException);await r.close();
   });
+  test('undoing a paid refund restores the funds ledger',()async{
+    var r=await Repository.open();
+    final state=clone(r.state);
+    state['products']=[{'id':'refund-funds-prod','name':'Drink','category':'','variant':'','sellingPrice':350,'purchaseCost':100,'minimum':0,'barcode':'','photo':null}];
+    await r.save(state);
+    await r.append(event(id:'refund-funds-stock',type:'restock',quantity:2,productId:'refund-funds-prod',cost:200));
+    final sale=event(id:'refund-funds-sale',type:'sale',quantity:1,productId:'refund-funds-prod',revenue:350,fee:10,payment:'card');
+    await r.recordSale(sale);
+    expect(objects(r.state['moneyEntries']).fold<int>(0,(sum,e)=>sum+(e['delta'] as int)),340);
+    await r.append(event(id:'refund-funds-refund',type:'refund',target:'refund-funds-sale',revenue:100,fee:0));
+    expect(objects(r.state['moneyEntries']).fold<int>(0,(sum,e)=>sum+(e['delta'] as int)),240);
+    await r.append(event(id:'refund-funds-undo',type:'undo',target:'refund-funds-refund'));
+    expect(objects(r.state['moneyEntries']).fold<int>(0,(sum,e)=>sum+(e['delta'] as int)),340);
+    expect(objects(r.state['moneyEntries']),hasLength(3));
+    await r.close();
+  });
   test('bundle sale is idempotent across confirmation and backup restore',()async{
     var r=await Repository.open();
     final state=clone(r.state);
