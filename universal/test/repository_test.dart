@@ -36,7 +36,7 @@ void main(){
     expect(objects(r.state['moneyEntries']).fold<int>(0,(sum,e)=>sum+(e['delta'] as int)),340);
     await r.append(event(id:'refund-funds-refund',type:'refund',target:'refund-funds-sale',revenue:100,fee:0));
     expect(objects(r.state['moneyEntries']).fold<int>(0,(sum,e)=>sum+(e['delta'] as int)),240);
-    await r.append(event(id:'refund-funds-undo',type:'undo',target:'refund-funds-refund'));
+    await r.append(event(id:'refund-funds-undo',type:'undo',target:'refund-funds-refund',note:'Undo mistaken refund'));
     expect(objects(r.state['moneyEntries']).fold<int>(0,(sum,e)=>sum+(e['delta'] as int)),340);
     expect(objects(r.state['moneyEntries']),hasLength(3));
     await r.close();
