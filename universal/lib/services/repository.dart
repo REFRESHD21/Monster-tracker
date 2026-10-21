@@ -75,6 +75,13 @@ class Repository {
     if(e['type']=='refund' && source!=null && ['cash','card'].contains(source['payment'])){
       final entries=(next['moneyEntries'] ??= <dynamic>[]) as List;
       entries.add({'id':'refund-funds-${e['id']}','type':'refund','amount':(e['revenue'] as int)+(e['fee'] as int),'delta':-((e['revenue'] as int)+(e['fee'] as int)),'payment':source['payment'],'saleId':sourceId,'note':'Refund paid · ${source['productName'] ?? sourceId}','date':e['date'] as int});
+    } else if(e['type']=='undo' && source!=null && source['type']=='refund'){
+      final original=events.where((old)=>old['id']==source['target']).firstOrNull;
+      if(original!=null && ['cash','card'].contains(original['payment'])){
+        final entries=(next['moneyEntries'] ??= <dynamic>[]) as List;
+        final refunded=(source['revenue'] as int)+(source['fee'] as int);
+        entries.add({'id':'correction-funds-${e['id']}','type':'correction','amount':refunded,'delta':refunded,'payment':original['payment'],'saleId':source['target'],'note':'Refund reversed · ${original['productName'] ?? source['target']}','date':e['date'] as int});
+      }
     } else if(e['type']=='undo' && source!=null && ['single','deal','sale'].contains(source['type']) && ['cash','card'].contains(source['payment'])){
       final entries=(next['moneyEntries'] ??= <dynamic>[]) as List;
       final net=(source['revenue'] as int)-(source['fee'] as int);
