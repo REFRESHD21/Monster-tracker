@@ -56,9 +56,10 @@ void main() {
 
         await tester.tap(find.descendant(
           of: find.byType(NavigationBar),
-          matching: find.byIcon(Icons.space_dashboard_outlined),
+          matching: find.text('Home'),
         ));
         await tester.pumpAndSettle();
+        expect(find.text('Your business at a glance'), findsOneWidget);
         for (final key in moduleKeys) {
           final homeAction = find.text(moduleNames[key]!);
           await tester.ensureVisible(homeAction);
@@ -81,9 +82,10 @@ void main() {
         }
         await tester.tap(find.descendant(
           of: find.byType(NavigationBar),
-          matching: find.byIcon(Icons.space_dashboard_outlined),
+          matching: find.text('Home'),
         ));
         await tester.pumpAndSettle();
+        expect(find.text('Your business at a glance'), findsOneWidget);
         expect(find.text(moduleNames[disabled]!), findsNothing);
         for (final other in moduleKeys.skip(1)) {
           final homeAction = find.text(moduleNames[other]!);
