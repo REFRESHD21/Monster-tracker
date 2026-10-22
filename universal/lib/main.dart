@@ -1,0 +1,490 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'dart:typed_data';
+import 'package:flutter/material.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
+import 'package:uuid/uuid.dart';
+import 'package:backup_destination/backup_destination.dart';
+import 'package:workmanager/workmanager.dart';
+import 'core/codec.dart';
+import 'core/business_modules.dart';
+import 'core/bundles.dart';
+import 'bundle_management_screen.dart';
+import 'business_module_screen.dart';
+import 'core/engine.dart';
+import 'core/legacy.dart';
+import 'core/products.dart';
+import 'core/purchases.dart';
+import 'core/stocktakes.dart';
+import 'sale_sheet.dart';
+import 'services/repository.dart';
+import 'services/backups.dart';
+import 'services/sync.dart';
+import 'services/google_sheets.dart';
+import 'core/sheet_snapshot.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  try {await Workmanager().initialize(backgroundTasks);}catch(_) {/* Foreground save/export remains available. */}
+  runApp(const Startup());
+}
+class Startup extends StatefulWidget {const Startup({super.key});@override State<Startup> createState()=>_StartupState();}
+class _StartupState extends State<Startup> {
+  late Future<Repository> future=Repository.open();
+  @override Widget build(BuildContext context)=>FutureBuilder<Repository>(future:future,builder:(c,s){
+    if(s.hasData)return TrackerApp(repository:s.data!);
+    return MaterialApp(home:Scaffold(body:SafeArea(child:Center(child:Padding(padding:const EdgeInsets.all(28),child:s.hasError?Column(mainAxisSize:MainAxisSize.min,children:[const Icon(Icons.shield_outlined,size:52),const SizedBox(height:20),const Text('Your existing records are retained',style:TextStyle(fontSize:24)),const SizedBox(height:16),Text('${s.error}'),const SizedBox(height:16),FilledButton(onPressed:()=>setState(()=>future=Repository.open()),child:const Text('Retry migration'))]):const CircularProgressIndicator())))));
+  });
+}
+class TrackerApp extends StatefulWidget {
+  final Repository repository; final Future<Uint8List?> Function()? pickBackupBytes; const TrackerApp({super.key,required this.repository,this.pickBackupBytes});
+  @override State<TrackerApp> createState()=>_TrackerAppState();
+}
+class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
+  int tab=0;bool archivedView=false,saleOpen=false;bool busy=false;bool syncing=false;String query='',period='all',productSort='revenue';DateTimeRange? customDates;Timer? autoTimer;String syncStatus='';
+  Repository get repo=>widget.repository;Obj get s=>repo.state;
+  Accounts get accounts=>validateState(s);
+  @override void initState(){super.initState();WidgetsBinding.instance.addObserver(this);autoTimer=Timer.periodic(const Duration(minutes:2),(_)=>automatic());Future.microtask(automatic);}
+  @override void dispose(){WidgetsBinding.instance.removeObserver(this);autoTimer?.cancel();super.dispose();}
+  @override void didChangeAppLifecycleState(AppLifecycleState state){if(state==AppLifecycleState.resumed)automatic();}
+  Future<void> automatic() async {if(busy || syncing)return;syncing=true;try {try{await Sheets.initializeConnection();if(await secrets.read(key:'sheets-auto')=='true')await Sheets.upload(s);}catch(_){}await refreshSyncStatus();final p=await secrets.read(key:'backup-password'),every=await secrets.read(key:'backup-frequency'),last=int.tryParse(await secrets.read(key:'backup-last') ?? '0') ?? 0;if(p!=null && every!=null && DateTime.now().millisecondsSinceEpoch-last>(every=='weekly'?7:1)*86400000){await Backups.recovery(s,p);await secrets.write(key:'backup-last',value:'${DateTime.now().millisecondsSinceEpoch}');}}catch(_){}finally{syncing=false;} }
+  Future<void> perform(BuildContext c,Future<void> Function() fn,{String message='Saved. Historical records retained.'}) async {
+    if(busy)return;setState(()=>busy=true);
+    try {await fn();if(mounted){setState((){});ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text(message)));}}
+    catch(e){if(c.mounted)await showDialog<void>(context:c,builder:(c)=>AlertDialog(title:const Text('Action incomplete · local records retained'),content:Text('$e'),actions:[TextButton(onPressed:()=>Navigator.pop(c),child:const Text('Close'))]));}
+    finally {if(mounted){setState(()=>busy=false);unawaited(automatic());}}
+  }
+  ThemeData theme() {
+    final name=s['theme'];final seed=switch(name){'ocean'=>const Color(0xff056D92),'purple'=>const Color(0xff7755A4),'warm neutral'=>const Color(0xff886447),'light'=>const Color(0xff42566C),_=>const Color(0xff237655)};
+    return ThemeData(useMaterial3:true,colorScheme:ColorScheme.fromSeed(seedColor:seed,brightness:name=='dark'?Brightness.dark:Brightness.light),appBarTheme:const AppBarTheme(centerTitle:false),inputDecorationTheme:const InputDecorationTheme(border:OutlineInputBorder()),cardTheme:const CardThemeData(margin:EdgeInsets.symmetric(vertical:6),elevation:0));
+  }
+  @override Widget build(BuildContext context)=>MaterialApp(title:'Business Tracker',theme:theme(),home:Builder(builder:(c)=>Scaffold(
+    appBar:AppBar(title:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(s['businessName'],style:const TextStyle(fontSize:21,fontWeight:FontWeight.w700)),Text(['Overview','Products & stock','Transaction history','Profit reports','Business settings'][tab],style:Theme.of(c).textTheme.labelMedium)]),actions:[if(tab==1)IconButton(tooltip:'Add product',onPressed:busy?null:()=>editProduct(c),icon:const Icon(Icons.add)),IconButton(tooltip:'Scan barcode',onPressed:busy?null:()=>scan(c),icon:const Icon(Icons.qr_code_scanner))]),
+    body:SafeArea(child:Column(children:[if(busy)const LinearProgressIndicator(),Expanded(child:IgnorePointer(ignoring:busy,child:ListView(padding:const EdgeInsets.fromLTRB(20,12,20,100),children:switch(tab){0=>home(c),1=>products(c),2=>history(c),3=>reports(c),_=>settings(c)})))])),
+    floatingActionButton:FloatingActionButton.extended(key:const ValueKey('record-sale'),onPressed:busy?null:()=>recordSale(c),icon:const Icon(Icons.point_of_sale),label:const Text('Record sale')),
+    bottomNavigationBar:NavigationBar(selectedIndex:tab,onDestinationSelected:(i)=>setState(()=>tab=i),destinations:const [NavigationDestination(icon:Icon(Icons.space_dashboard_outlined),label:'Home'),NavigationDestination(icon:Icon(Icons.inventory_2_outlined),label:'Products'),NavigationDestination(icon:Icon(Icons.receipt_long_outlined),label:'History'),NavigationDestination(icon:Icon(Icons.bar_chart),label:'Reports'),NavigationDestination(icon:Icon(Icons.tune),label:'Settings')]),
+  )));
+  Widget title(String text)=>Padding(padding:const EdgeInsets.symmetric(vertical:12),child:Text(text,style:const TextStyle(fontSize:22,fontWeight:FontWeight.w700)));
+  Widget text(String text)=>Padding(padding:const EdgeInsets.symmetric(vertical:8),child:Text(text));
+  String moneyOrIncomplete(dynamic value)=>value is int?money(value):'Incomplete';
+  Widget action(String label,IconData icon,VoidCallback fn)=>Padding(padding:const EdgeInsets.symmetric(vertical:5),child:OutlinedButton.icon(onPressed:fn,icon:Icon(icon),label:Padding(padding:const EdgeInsets.all(12),child:Text(label))));
+  Widget metric(BuildContext c,String label,String value)=>Card(color:Theme.of(c).colorScheme.surfaceContainerHighest,child:Padding(padding:const EdgeInsets.all(18),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(label),const SizedBox(height:8),Text(value,style:const TextStyle(fontSize:27,fontWeight:FontWeight.w700))])));
+  String productName(String? id)=>objects(s['products']).where((p)=>p['id']==id).map((p)=>'${p['name']}${p['variant']==''?'':' · ${p['variant']}'}').firstOrNull ?? 'Business expense';
+
+  List<Obj> get moneyEntries=>objects(s['moneyEntries']??const <dynamic>[]);
+  int get businessBalance=>moneyEntries.fold<int>(0,(sum,e)=>sum+(e['delta'] as int? ?? 0));
+  Future<void> moneyAction(BuildContext c,String kind,{StateSetter? refresh}) async {
+    final current=businessBalance;
+    final amountController=TextEditingController(text:kind=='recount'?amount(current<0?0:current):''),noteController=TextEditingController();
+    final result=await showDialog<Obj>(context:c,builder:(d)=>AlertDialog(
+      title:Text(switch(kind){'add'=>'Add money','remove'=>'Take money out','recount'=>'Recount business funds',_=>'Money entry'}),
+      content:Column(mainAxisSize:MainAxisSize.min,children:[
+        TextField(controller:amountController,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:InputDecoration(labelText:kind=='recount'?'Actual amount counted (AUD)':'Amount (AUD)')),
+        TextField(controller:noteController,decoration:const InputDecoration(labelText:'Note / reason (optional)')),
+      ]),
+      actions:[
+        TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel')),
+        FilledButton(onPressed:(){try{final n=cents(amountController.text);if(kind!='recount'&&n<1)throw const FormatException('Enter an amount greater than zero.');final delta=kind=='add'?n:kind=='remove'?-n:n-current;Navigator.pop(d,{'id':const Uuid().v4(),'type':kind,'amount':n,'delta':delta,'note':noteController.text.trim(),'date':DateTime.now().millisecondsSinceEpoch});}catch(e){ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text('${e}')));}},child:const Text('Save entry')),
+      ]));
+    amountController.dispose();noteController.dispose();
+    if(result==null||!c.mounted)return;
+    await perform(c,()async{final next=clone(s);final entries=(next['moneyEntries']??=<dynamic>[]) as List;entries.add(result);await repo.save(next);},message:kind=='recount'?'Recount saved. Previous entries retained.':'Money entry saved.');
+    if(refresh!=null)refresh((){});
+  }
+  Future<void> moneyManagement(BuildContext c) async {
+    await showModalBottomSheet<void>(context:c,isScrollControlled:true,showDragHandle:true,builder:(b)=>StatefulBuilder(builder:(b,update){
+      final entries=moneyEntries;final balance=businessBalance;
+      return SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(20,8,20,20),child:SizedBox(height:MediaQuery.sizeOf(b).height*.78,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+        Text('Business money',style:Theme.of(b).textTheme.headlineSmall),const SizedBox(height:8),
+        Text(money(balance),style:Theme.of(b).textTheme.headlineLarge?.copyWith(fontWeight:FontWeight.w800)),
+        const Text('Paid cash and card sales are added automatically, net of recorded fees. IOUs are not counted until money is actually received. Recount records the difference without rewriting earlier entries.'),
+        const SizedBox(height:12),
+        Wrap(spacing:8,runSpacing:8,children:[
+          FilledButton.icon(onPressed:()=>moneyAction(c,'add',refresh:update),icon:const Icon(Icons.add),label:const Text('Add money')),
+          OutlinedButton.icon(onPressed:()=>moneyAction(c,'remove',refresh:update),icon:const Icon(Icons.remove),label:const Text('Take out')),
+          OutlinedButton.icon(onPressed:()=>moneyAction(c,'recount',refresh:update),icon:const Icon(Icons.calculate_outlined),label:const Text('Recount')),
+        ]),
+        const Divider(height:24),const Text('Recent entries',style:TextStyle(fontWeight:FontWeight.w700)),const SizedBox(height:8),
+        Expanded(child:entries.isEmpty?const Center(child:Text('No money entries yet. Record a sale or recount your starting funds.')):ListView(children:entries.reversed.take(100).map((e){
+          final delta=e['delta'] as int? ?? 0;final kind=e['type'];
+          final label=switch(kind){'recount'=>'Recount · counted ${money(e['amount'] as int)}','sale'=>'Sale proceeds','refund'=>'Refund paid','correction'=>'Sale reversed','add'=>'Money added','remove'=>'Money taken out','restock'=>'Stock purchase',_=>'Funds movement'};
+          return ListTile(contentPadding:EdgeInsets.zero,leading:Icon(kind=='recount'?Icons.calculate_outlined:delta<0?Icons.arrow_upward:Icons.arrow_downward),title:Text(e['note'] as String? ?? label),subtitle:Text('${displayDate(e['date'] as int?)} · $label'),trailing:Text('${delta>0?'+':''}${money(delta)}',style:TextStyle(fontWeight:FontWeight.w700,color:delta<0?Theme.of(b).colorScheme.error:Theme.of(b).colorScheme.primary)));
+        }).toList())),
+      ]))));
+    }));
+  }
+
+  List<Widget> home(BuildContext c) {
+    final a=accounts,totals=a.summary(), low=activeProducts(s).where((p)=>a.book.stock(p['id'])<(p['minimum'] as int)).toList();
+    final sales=a.salesProfit(objects(s['products']));
+    return [Card(child:Padding(padding:const EdgeInsets.all(18),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('BUSINESS FUNDS',style:Theme.of(c).textTheme.labelMedium),const SizedBox(height:6),Text(money(businessBalance),style:Theme.of(c).textTheme.headlineMedium?.copyWith(fontWeight:FontWeight.w800)),const SizedBox(height:4),Text('Paid sales added automatically',style:Theme.of(c).textTheme.bodySmall),Align(alignment:Alignment.centerLeft,child:TextButton.icon(onPressed:()=>moneyManagement(c),icon:const Icon(Icons.account_balance_wallet_outlined),label:const Text('Manage money')))]))),action('Quick sale',Icons.point_of_sale,()=>recordSale(c)),action('Add stock',Icons.add_box_outlined,()=>pickStock(c)),action('Manage money',Icons.account_balance_wallet_outlined,()=>moneyManagement(c)),action('Products',Icons.inventory_2_outlined,()=>setState(()=>tab=1)),if(moduleEnabled(s,moduleCustomerAccounts))action(moduleNames[moduleCustomerAccounts]!,Icons.people_outline,()=>openBusinessModule(c,moduleCustomerAccounts)),if(moduleEnabled(s,modulePriceComparison))action(moduleNames[modulePriceComparison]!,Icons.storefront_outlined,()=>openBusinessModule(c,modulePriceComparison)),if(moduleEnabled(s,moduleForecasting))action(moduleNames[moduleForecasting]!,Icons.trending_up,()=>openBusinessModule(c,moduleForecasting)),if(moduleEnabled(s,moduleSmartRestock))action(moduleNames[moduleSmartRestock]!,Icons.shopping_cart_outlined,()=>openBusinessModule(c,moduleSmartRestock)),if(moduleEnabled(s,moduleBundles))action(moduleNames[moduleBundles]!,Icons.widgets_outlined,()=>manageBundles(c)),title('Your business at a glance'),text('Offline records • AUD • Perth reporting dates'),salesOverview(c,sales),Row(children:[Expanded(child:metric(c,'Units on hand','${a.book.lots.values.fold<int>(0,(n,l)=>n+l.quantity)}')),const SizedBox(width:10),Expanded(child:metric(c,'Stock value',money(a.book.value)))]),metric(c,'Estimated net profit · all history',money(totals['netProfit'])),
+      if(objects(s['products']).isEmpty)...[title('Start with your first product'),text('Add any drink, skincare item or other product. This installation starts empty.'),action('Add product',Icons.add,()=>editProduct(c))],
+      if(s['legacy']!=null)text('Your Monster history has been imported. Original records and unknown dates are retained.'),
+      if(low.isNotEmpty)...[title('Low-stock alerts'),for(final p in low)ListTile(leading:const Icon(Icons.warning_amber),title:Text(productName(p['id'])),subtitle:Text('${a.book.stock(p['id'])} left · minimum ${p['minimum']}'),onTap:()=>product(c,p))],
+      title('Quick actions'),action('Purchase history',Icons.shopping_bag_outlined,()=>purchaseLedger(c)),action('Record an expense',Icons.receipt_outlined,()=>transaction(c,'expense',null)),action('View products / stock',Icons.inventory_2_outlined,()=>setState(()=>tab=1)),action('Back up your records',Icons.save_alt,()=>exportBackup(c,true)),text('Card sales are bookkeeping entries only. Funds track recorded money movements; the app does not charge or refund a payment card.')];
+  }
+  Widget salesOverview(BuildContext c,Obj sales){
+    final colors=Theme.of(c).colorScheme;
+    final earnedColor=colors.onSurface;
+    final profitColor=colors.tertiary;
+    Widget metricTile(String label,String key,String hint,{bool profit=false})=>Expanded(child:Card(color:colors.surface,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(16)),child:Padding(padding:const EdgeInsets.all(14),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(label,style:Theme.of(c).textTheme.bodyMedium?.copyWith(color:colors.onSurfaceVariant)),const SizedBox(height:6),Text(moneyOrIncomplete(sales[key]),style:Theme.of(c).textTheme.headlineSmall?.copyWith(fontWeight:FontWeight.w700,color:profit?profitColor:earnedColor),maxLines:1,overflow:TextOverflow.ellipsis),const SizedBox(height:5),Text(hint,style:Theme.of(c).textTheme.bodySmall?.copyWith(color:colors.onSurfaceVariant))]))));
+    Widget eyebrow(String label)=>Padding(padding:const EdgeInsets.only(top:16,bottom:4),child:Text(label,style:Theme.of(c).textTheme.labelLarge?.copyWith(fontWeight:FontWeight.w700,color:colors.onSurfaceVariant)));
+    Widget combined(String label,String key,{bool profit=false})=>Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(label,style:Theme.of(c).textTheme.bodyMedium?.copyWith(color:colors.onSurfaceVariant)),const SizedBox(height:4),Text(moneyOrIncomplete(sales[key]),style:Theme.of(c).textTheme.headlineSmall?.copyWith(fontWeight:FontWeight.w700,color:profit?profitColor:earnedColor),maxLines:1,overflow:TextOverflow.ellipsis)]));
+    return Card(color:colors.surfaceContainerHigh,shape:RoundedRectangleBorder(borderRadius:BorderRadius.circular(24)),child:Padding(padding:const EdgeInsets.all(16),child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[
+      Row(children:[Expanded(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text('Sales & Profit Overview',style:Theme.of(c).textTheme.titleLarge?.copyWith(fontWeight:FontWeight.w700)),const SizedBox(height:4),Text('Actual ledger figures · AUD',style:Theme.of(c).textTheme.bodyMedium?.copyWith(color:colors.onSurfaceVariant))])),Icon(Icons.query_stats_outlined,color:colors.onSurfaceVariant)]),
+      eyebrow('ALREADY EARNED'),
+      Row(crossAxisAlignment:CrossAxisAlignment.start,children:[metricTile('Sales revenue','revenue','From completed sales'),const SizedBox(width:8),metricTile('Product profit','profit','After product costs',profit:true)]),
+      eyebrow('FUTURE POTENTIAL · ESTIMATE'),
+      Row(crossAxisAlignment:CrossAxisAlignment.start,children:[metricTile('Potential revenue','futureRevenue','If remaining stock sells'),const SizedBox(width:8),metricTile('Potential profit','futureProfit','After stock costs',profit:true)]),
+      Padding(padding:const EdgeInsets.symmetric(vertical:16),child:Divider(color:colors.outlineVariant)),
+      Text('COMBINED POTENTIAL',style:Theme.of(c).textTheme.labelLarge?.copyWith(fontWeight:FontWeight.w700,color:colors.onSurfaceVariant)),
+      const SizedBox(height:12),
+      Row(crossAxisAlignment:CrossAxisAlignment.start,children:[combined('Total revenue','totalRevenue'),const SizedBox(width:8),combined('Total product profit','totalProfit',profit:true)]),
+      const SizedBox(height:12),
+      Text('Includes earned results and an estimate for today’s remaining sellable FIFO stock at current prices. Future amounts are not guaranteed.',style:Theme.of(c).textTheme.bodySmall?.copyWith(color:colors.onSurfaceVariant)),
+      if((sales['unknownEarnedCostUnits'] as int)>0||(sales['unknownCostUnits'] as int)>0||(sales['unknownPriceUnits'] as int)>0)...[const SizedBox(height:8),Text('Incomplete: ${sales['unknownEarnedCostUnits']} sold units and ${sales['unknownCostUnits']} remaining units have no reliable purchase cost; ${sales['unknownPriceUnits']} remaining units have no usable selling price.',style:Theme.of(c).textTheme.bodySmall?.copyWith(color:colors.error))],
+      if((sales['unknownDates'] as int)>0)...[const SizedBox(height:8),Text('${sales['unknownDates']} historical rows have unknown dates and appear in all-time figures only.',style:Theme.of(c).textTheme.bodySmall?.copyWith(color:colors.onSurfaceVariant))],
+    ])));
+  }
+  Future<void> openBusinessModule(BuildContext c,String key) async {if(!moduleEnabled(s,key))return;await Navigator.push<void>(c,MaterialPageRoute(builder:(_)=>BusinessModuleScreen(module:key,initialState:s,onSave:(next)=>repo.save(next))));if(mounted)setState((){});}
+  Future<void> manageBundles(BuildContext c) async {
+    if(!moduleEnabled(s,moduleBundles))return;
+    await Navigator.push<void>(c,MaterialPageRoute(builder:(_)=>BundleManagementScreen(initialState:s,onSave:(next)=>repo.save(next),pickPhoto:()=>photo(c))));
+    if(mounted)setState((){});
+  }
+  Future<void> recordSale(BuildContext c,[Obj? selected]) async {
+    if(saleOpen || busy)return;
+    saleOpen=true;
+    try {
+      if(selected==null){
+        var filter='';
+        final cart=<String,int>{};
+        Obj? selectionResult;
+        selected=await showModalBottomSheet<Obj>(context:c,isScrollControlled:true,showDragHandle:true,builder:(b)=>StatefulBuilder(builder:(b,update){
+          final candidates=activeProducts(s).where((p)=>'${productLabel(p)} ${p['barcode']}'.toLowerCase().contains(filter.toLowerCase())).toList();
+          final availableBundles=moduleEnabled(s,moduleBundles)?bundleRecords(s).where((item)=>item['archived']!=true && '${item['name']} ${item['category']}'.toLowerCase().contains(filter.toLowerCase())).toList():<Obj>[];
+          final pickedCount=cart.values.fold<int>(0,(sum,q)=>sum+q);
+          bool canAdd(String key, Obj item, bool isBundle){
+            if(isBundle && cart.keys.any((existing)=>existing.startsWith('b:')&&existing!=key))return false;
+            final next=<String,int>{};
+            for(final entry in cart.entries){
+              final parts=entry.key.split(':');
+              final current=parts[0]=='b'?bundleById(s,parts.sublist(1).join(':')):objects(s['products']).where((p)=>p['id']==parts.sublist(1).join(':')).firstOrNull;
+              if(current==null)continue;
+              if(parts[0]=='b'){for(final part in objects(current['components'])){final id=part['productId'] as String;next[id]=(next[id]??0)+(part['quantity'] as int)*entry.value;}}
+              else {final id=current['id'] as String;next[id]=(next[id]??0)+entry.value;}
+            }
+            if(isBundle){for(final part in objects(item['components'])){final id=part['productId'] as String;next[id]=(next[id]??0)+(part['quantity'] as int);}}
+            else {final id=item['id'] as String;next[id]=(next[id]??0)+1;}
+            return next.entries.every((e)=>accounts.book.stock(e.key)>=e.value);
+          }
+          void add(String key, Obj item, bool isBundle){
+            if(!canAdd(key,item,isBundle))return;
+            update(()=>cart[key]=(cart[key]??0)+1);
+          }
+          return SafeArea(child:SizedBox(height:MediaQuery.sizeOf(b).height*.82,child:Padding(padding:const EdgeInsets.all(20),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[title('Quick sale'),TextField(decoration:const InputDecoration(labelText:'Find product or bundle',prefixIcon:Icon(Icons.search)),onChanged:(v)=>update(()=>filter=v)),Expanded(child:ListView(children:[
+            if(candidates.isEmpty&&availableBundles.isEmpty)text('No matching sale items. Add products or enable Bundles & Combos.'),
+            for(final p in candidates)ListTile(title:Text(productLabel(p)),subtitle:Text('${accounts.book.stock(p['id'])} available · ${p['sellingPrice'] is int?money(p['sellingPrice'] as int):'Set selling price'} each'),onTap:()=>Navigator.pop(b,p),trailing:Row(mainAxisSize:MainAxisSize.min,children:[if((cart['p:${p['id']}']??0)>0)...[Text('${cart['p:${p['id']}']} ×  '),IconButton(tooltip:'Remove product',onPressed:()=>update((){final key='p:${p['id']}';if(cart[key]==1)cart.remove(key);else cart[key]=cart[key]!-1;}),icon:const Icon(Icons.remove_circle_outline))],IconButton(tooltip:'Add product',onPressed:canAdd('p:${p['id']}',p,false)?()=>add('p:${p['id']}',p,false):null,icon:const Icon(Icons.add_circle_outline))])),
+            if(availableBundles.isNotEmpty)title('Bundles'),
+            for(final bundle in availableBundles)Builder(builder:(_){final key='b:${bundle['id']}';final count=bundleAvailability(accounts,bundle,objects(s['products']));final contents=objects(bundle['components']).map((part){final product=objects(s['products']).where((p)=>p['id']==part['productId']).firstOrNull;return '${part['quantity']} × ${product==null?part['productId']:productLabel(product)}';}).join(', ');final can=canAdd(key,bundle,true);return ListTile(title:Text(bundle['name'] as String),subtitle:Text('${bundle['sellingPrice'] is int?money(bundle['sellingPrice'] as int):'Set a selling price'} · $count available\n$contents'),isThreeLine:true,onTap:can&&bundle['sellingPrice'] is int?()=>Navigator.pop(b,{...bundle,'_bundleSelection':true}):null,trailing:Row(mainAxisSize:MainAxisSize.min,children:[if((cart[key]??0)>0)...[Text('${cart[key]} ×  '),IconButton(tooltip:'Remove bundle',onPressed:()=>update((){if(cart[key]==1)cart.remove(key);else cart[key]=cart[key]!-1;}),icon:const Icon(Icons.remove_circle_outline))],IconButton(tooltip:'Add bundle',onPressed:can&&bundle['sellingPrice'] is int?()=>add(key,bundle,true):null,icon:const Icon(Icons.add_circle_outline))]));}),
+          ])),if(pickedCount>0)Padding(padding:const EdgeInsets.symmetric(vertical:8),child:Text('Cart: $pickedCount sale items')),FilledButton(onPressed:pickedCount==0?null:(){selectionResult={'_cartSelection':true,'lines':[for(final entry in cart.entries){'kind':entry.key.startsWith('b:')?'bundle':'product','id':entry.key.substring(2),'quantity':entry.value}]};Navigator.pop(b,selectionResult);},child:Text(pickedCount==0?'Add items to sale':'Review cart · $pickedCount items'))]))));
+        }));
+      }
+      if(selected==null || !c.mounted)return;
+      List<Obj>? cartLines;
+      Obj? selectedBundle;
+      late Obj p;
+      late int stock;
+      if(selected['_cartSelection']==true){
+        cartLines=[];
+        var cartSubtotal=0;
+        for(final line in objects(selected['lines'])){
+          final isBundle=line['kind']=='bundle',id=line['id'] as String,q=line['quantity'] as int;
+          if(isBundle){
+            if(!moduleEnabled(s,moduleBundles))throw const FormatException('Enable Bundles & Combos to sell bundles.');
+            final source=bundleById(s,id);
+            if(source==null||source['archived']==true||source['sellingPrice'] is! int)throw const FormatException('A selected bundle is no longer available or has no price.');
+            final bundle=<String,dynamic>{...clone(source),'components':[for(final part in objects(source['components'])) {...part,'productName':productLabel(objects(s['products']).firstWhere((product)=>product['id']==part['productId']))}]};
+            cartSubtotal+=(source['sellingPrice'] as int)*q;
+            cartLines.add({'kind':'bundle','id':id,'quantity':q,'bundle':bundle,'name':source['name'],'unitPrice':source['sellingPrice']});
+          }else{
+            final product=objects(s['products']).where((item)=>item['id']==id).firstOrNull;
+            if(product==null||isArchived(product)||product['sellingPrice'] is! int)throw const FormatException('A selected product is no longer available or has no price.');
+            cartSubtotal+=(product['sellingPrice'] as int)*q;
+            cartLines.add({'kind':'product','id':id,'quantity':q,'product':product,'name':productLabel(product),'unitPrice':product['sellingPrice']});
+          }
+        }
+        if(cartLines.isEmpty)throw const FormatException('Add at least one item to the sale.');
+        p={'id':'mixed-sale-cart','name':'Sale cart','variant':'','sellingPrice':cartSubtotal,'twoItemPrice':null};
+        stock=10000;
+      }else if(selected['_bundleSelection']==true){
+        if(!moduleEnabled(s,moduleBundles))throw const FormatException('Enable Bundles & Combos to sell bundles.');
+        selectedBundle=bundleById(s,selected['id'] as String);
+        if(selectedBundle==null||selectedBundle['archived']==true)throw const FormatException('This bundle is no longer available.');
+        if(selectedBundle['sellingPrice'] is! int)throw const FormatException('Set a selling price for this bundle before selling it.');
+        stock=bundleAvailability(accounts,selectedBundle!,objects(s['products']));
+        if(stock<1)throw const FormatException('A bundle component is unavailable.');
+        selectedBundle={...clone(selectedBundle!), 'components':[for(final part in objects(selectedBundle!['components'])) {...part,'productName':productLabel(objects(s['products']).firstWhere((product)=>product['id']==part['productId']))}]};
+        p={'id':selectedBundle['id'],'name':selectedBundle['name'],'variant':'','sellingPrice':selectedBundle['sellingPrice'],'twoItemPrice':null,'archived':selectedBundle['archived']??false};
+      }else{
+        p=objects(s['products']).where((item)=>item['id']==selected!['id']).firstOrNull ?? (throw const FormatException('Product no longer exists.'));
+        if(isArchived(p))throw const FormatException('Restore this archived product before selling it.');
+        stock=accounts.book.stock(p['id']);
+        if(stock==0){ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content:Text('No stock available. Receive stock from product options first.')));return;}
+      }
+      final saved=await showModalBottomSheet<bool>(context:c,isScrollControlled:true,isDismissible:false,enableDrag:false,showDragHandle:true,builder:(b)=>SaleSheet(product:clone(p),bundle:selectedBundle==null?null:clone(selectedBundle!),cartLines:cartLines,stock:stock,payment:s['lastPayment'] as String? ?? 'cash',customers:moduleEnabled(s,moduleCustomerAccounts)?customerRecords(s):const <Obj>[],pickReceipt:()=>photo(b,receipt:true),onSave:(e,a)async{await repo.recordSale(e,a);}));
+      if(saved==true && mounted){setState((){});if(c.mounted)ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content:Text('Sale recorded.')));unawaited(automatic());}
+    } catch(e){if(c.mounted)ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text('$e')));}
+    finally{saleOpen=false;}
+  }
+  List<Widget> products(BuildContext c) {
+    final a=accounts,shown=objects(s['products']).where((p)=>isArchived(p)==archivedView).where((p)=>'${p['name']} ${p['category']} ${p['variant']} ${p['barcode']}'.toLowerCase().contains(query.toLowerCase())).toList();
+    return [Row(children:[Expanded(child:title(archivedView?'Archived products':'Active products')),TextButton(onPressed:()=>setState((){archivedView=!archivedView;query='';}),child:Text(archivedView?'Active products':'Archived products'))]),
+      if(archivedView)text('Archived products stay in history and reports. Restore a product to sell it again.'),
+      if(!archivedView)action('Add product',Icons.add,()=>editProduct(c)),
+      if(!archivedView)action('Purchase stock',Icons.shopping_bag_outlined,()=>purchaseLedger(c)),
+      if(!archivedView)action('Stocktake mode',Icons.fact_check_outlined,()=>stocktakeMode(c)),if(!archivedView&&moduleEnabled(s,moduleBundles))action('Bundles & Combos',Icons.widgets_outlined,()=>manageBundles(c)),
+      TextField(key:ValueKey(archivedView),decoration:const InputDecoration(labelText:'Find a name, category, variant or barcode',prefixIcon:Icon(Icons.search)),onChanged:(v)=>setState(()=>query=v)),const SizedBox(height:12),
+      if(shown.isEmpty)text(archivedView?'No archived products.':'No matching active products.'),
+      for(final p in shown)Card(child:ListTile(contentPadding:const EdgeInsets.all(12),leading:p['photo']==null?const CircleAvatar(child:Icon(Icons.inventory_2_outlined)):ClipRRect(borderRadius:BorderRadius.circular(12),child:Image.memory(Uint8List.fromList(attachmentBytes(obj(p['photo']))),width:52,height:52,fit:BoxFit.cover)),title:Text(productName(p['id']),style:const TextStyle(fontWeight:FontWeight.w600)),subtitle:Text('${p['category']}\n${a.book.stock(p['id'])} in stock · ${p['sellingPrice'] is int?money(p['sellingPrice'] as int):'selling price not set'} each${p['twoItemPrice']==null?'':' · 2 for ${money(p['twoItemPrice'] as int)}'}'),
+        trailing:archivedView?TextButton(onPressed:()=>perform(c,()async{final next=clone(s);objects(next['products']).firstWhere((n)=>n['id']==p['id'])['archived']=false;await repo.save(next);},message:'Product restored.'),child:const Text('Restore')):IconButton(key:ValueKey('product-options-${p['id']}'),tooltip:'Product options',icon:const Icon(Icons.more_horiz),onPressed:()=>product(c,p)),
+        onTap:archivedView?()=>product(c,p):()=>recordSale(c,p)))];
+  }
+  Future<void> removeProduct(BuildContext c,Obj p) async {
+    final usage=productRemoval(s,p['id']);
+    final remove=usage.canDelete;
+    final yes=await showDialog<bool>(context:c,builder:(d)=>AlertDialog(title:Text(remove?'Delete product permanently?':'Archive product?'),content:Text('${productLabel(p)}\n\n${usage.explanation}'),actions:[TextButton(onPressed:()=>Navigator.pop(d,false),child:const Text('Cancel')),if(remove || usage.canArchive)FilledButton(onPressed:()=>Navigator.pop(d,true),child:Text(remove?'Delete permanently':'Archive product'))]));
+    if(yes==true && c.mounted)await perform(c,()async{final next=clone(s);if(remove){(next['products'] as List).removeWhere((n)=>n['id']==p['id']);}else{objects(next['products']).firstWhere((n)=>n['id']==p['id'])['archived']=true;}await repo.save(next);},message:remove?'Unused product deleted.':'Product archived. History retained.');
+  }
+  Future<void> product(BuildContext c,Obj p) async {
+    if(isArchived(p)){
+      await showDialog<void>(context:c,builder:(d)=>AlertDialog(title:Text(productLabel(p)),content:Text('Archived · ${accounts.book.stock(p['id'])} units\n\n${productRemoval(s,p['id']).explanation}\n\nRestore to edit or record new stock.'),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Close')),FilledButton(onPressed:()=>perform(c,()async{final next=clone(s);objects(next['products']).firstWhere((n)=>n['id']==p['id'])['archived']=false;await repo.save(next);if(d.mounted)Navigator.pop(d);},message:'Product restored.'),child:const Text('Restore'))]));return;
+    }
+    await showModalBottomSheet<void>(context:c,isScrollControlled:true,showDragHandle:true,builder:(b)=>SafeArea(child:SingleChildScrollView(padding:const EdgeInsets.all(24),child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[title(productName(p['id'])),text('${accounts.book.stock(p['id'])} units available · selling price ${p['sellingPrice'] is int?money(p['sellingPrice'] as int):'not set'}'),for(final item in [('sale','Record sale',Icons.point_of_sale),('restock','Receive / restock',Icons.add_box_outlined),('missing','Missing stock',Icons.search_off),('damaged','Damaged stock',Icons.broken_image_outlined)])action(item.$2,item.$3,(){Navigator.pop(b);if(item.$1=='sale'){recordSale(c,p);}else{transaction(c,item.$1,p);}}),action('Transfer existing stock here',Icons.move_down,(){Navigator.pop(b);transferStock(c,p);}),action('Edit product / prices',Icons.edit_outlined,(){Navigator.pop(b);editProduct(c,p);}),action('Remove / archive product',Icons.archive_outlined,(){Navigator.pop(b);removeProduct(c,p);})]))));
+  }
+  Future<void> stocktakeMode(BuildContext c) async {
+    await showModalBottomSheet<void>(context:c,isScrollControlled:true,showDragHandle:true,builder:(b)=>StatefulBuilder(builder:(b,refresh)=>SafeArea(child:SizedBox(height:MediaQuery.sizeOf(b).height*.84,child:Padding(padding:const EdgeInsets.all(20),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      Row(children:[Expanded(child:title('Stocktake mode')),IconButton(tooltip:'Start stocktake',icon:const Icon(Icons.add),onPressed:activeProducts(s).isEmpty?null:()=>perform(c,()async{await repo.save(startStocktake(s));},message:'Stocktake started. Count each product as you physically check it.'))]),
+      text('Count sellable and damaged cans separately. Sales and purchases stay in the ledger while you count; each product is compared with stock when its count is recorded.'),
+      FilledButton.icon(key:const ValueKey('start-stocktake'),onPressed:activeProducts(s).isEmpty?null:()=>perform(c,()async{await repo.save(startStocktake(s));},message:'Stocktake started.'),icon:const Icon(Icons.playlist_add_check),label:const Text('Start stocktake')),
+      const SizedBox(height:8),Expanded(child:ListView(children:[
+        if(stocktakeSessions(s).isEmpty)text('No stocktakes recorded yet.'),
+        for(final session in stocktakeSessions(s).reversed)...[
+          Builder(builder:(ctx){
+            final products=objects(session['snapshotProducts']),counts=objects(session['counts']);
+            final stateLabel=session['status']=='completed'?'Completed':'In progress';
+            return Card(child:ListTile(
+              title:Text('$stateLabel · ${displayDate(session['startedAt'])}'),
+              subtitle:Text('${counts.length} of ${products.length} products counted'),
+              trailing:TextButton(
+                key:ValueKey('open-stocktake-${session['id']}'),
+                onPressed:()=>stocktakeCounting(c,session['id'] as String),
+                child:Text(session['status']=='completed'?'View':'Continue'),
+              ),
+            ));
+          }),
+        ],
+      ])),
+    ]))))));
+  }
+  Future<void> stocktakeCounting(BuildContext c,String sessionId) async {
+    await showModalBottomSheet<void>(context:c,isScrollControlled:true,showDragHandle:true,builder:(b)=>StatefulBuilder(builder:(b,refresh){
+      final session=stocktakeSessions(s).firstWhere((x)=>x['id']==sessionId), preview=stocktakePreview(s,sessionId), complete=session['status']=='completed';
+      final counted=preview.where((x)=>x['counted']==true).length, ready=counted==preview.length&&preview.every((x)=>x['conflict']!=true);
+      Future<void> enterCount(Obj productSnapshot) async {
+        final productId=productSnapshot['productId'] as String;
+        // Freeze the expected balance before opening the editor. Any later
+        // movements remain newer ledger entries and are reconciled at review.
+        final eventCount=objects(s['events']).length, expected=accounts.book.stock(productId);
+        final sellable=TextEditingController(text:'$expected'),damaged=TextEditingController(text:'0');
+        final ok=await showDialog<bool>(context:b,builder:(d)=>AlertDialog(title:Text('Count ${productSnapshot['name']}'),content:SizedBox(width:380,child:Column(mainAxisSize:MainAxisSize.min,children:[Text('Expected sellable stock at this count: $expected'),TextField(controller:sellable,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Physically counted sellable units')),TextField(controller:damaged,keyboardType:TextInputType.number,decoration:const InputDecoration(labelText:'Physically counted damaged units'))])),actions:[TextButton(onPressed:()=>Navigator.pop(d,false),child:const Text('Cancel')),FilledButton(key:const ValueKey('save-stocktake-count'),onPressed:()=>Navigator.pop(d,true),child:const Text('Save count'))]));
+        if(ok==true){final sell=int.tryParse(sellable.text),bad=int.tryParse(damaged.text);if(sell==null||bad==null||sell<0||bad<0){ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content:Text('Enter whole, non-negative quantities.')));}else{await perform(c,()async{final next=recordStocktakeCount(s,sessionId,productId,sellable:sell,damaged:bad,eventCount:eventCount);await repo.save(next);},message:'Count saved.');refresh(()=>{});}}
+        sellable.dispose();damaged.dispose();
+      }
+      return SafeArea(child:SizedBox(height:MediaQuery.sizeOf(b).height*.88,child:Padding(padding:const EdgeInsets.all(20),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+        Row(children:[Expanded(child:title(complete?'Stocktake results':'Count products')),Text('$counted / ${preview.length}')]),
+        text('A discrepancy is not recorded as a sale. Damaged units are written off separately. Found stock has unknown purchase cost until corrected with a documented inventory receipt.'),
+        Expanded(child:ListView(children:[
+          for(var i=0;i<preview.length;i++)Builder(builder:(ctx){
+            final row=preview[i],snap=objects(session['snapshotProducts'])[i];
+            final label='${row['name']}${row['variant']==''?'':' · ${row['variant']}'}';
+            if(row['counted']!=true)return Card(child:ListTile(
+              title:Text(label),
+              subtitle:Text('Snapshot at start: ${snap['expectedAtStart']} units'),
+              trailing:TextButton(onPressed:complete?null:()=>enterCount(snap),child:const Text('Count')),
+            ));
+            return Card(child:ListTile(
+              title:Text(label),
+              subtitle:Text('Expected at count ${row['expected']} · now ${row['current']}\nCounted sellable ${row['sellable']} + damaged ${row['damaged']} · variance ${row['variance']}\nProjected sellable after reconciliation ${row['projected']}'),
+              isThreeLine:true,
+              trailing:complete?const Icon(Icons.check_circle_outline):TextButton(onPressed:()=>enterCount(snap),child:const Text('Edit')),
+            ));
+          }),
+        ])),
+        if(!complete&&counted==preview.length&&preview.any((x)=>x['conflict']==true))const Text('A newer sale consumed more stock than this count leaves available. Recount the affected item before confirming.',style:TextStyle(color:Colors.red)),
+        if(complete)OutlinedButton.icon(onPressed:()=>Navigator.pop(b),icon:const Icon(Icons.close),label:const Text('Close'))else FilledButton.icon(key:const ValueKey('confirm-stocktake'),onPressed:ready?()=>perform(c,()async{final yes=await showDialog<bool>(context:c,builder:(d)=>AlertDialog(title:const Text('Confirm stocktake adjustments?'),content:const Text('This saves permanent, auditable inventory adjustments. Missing and damaged units affect stock value and net profit, not sales revenue or sales-based product profit.'),actions:[TextButton(onPressed:()=>Navigator.pop(d,false),child:const Text('Review again')),FilledButton(onPressed:()=>Navigator.pop(d,true),child:const Text('Confirm adjustments'))]));if(yes==true)await repo.confirmStocktakeSession(sessionId);},message:'Stocktake adjustments saved.'):null,icon:const Icon(Icons.fact_check_outlined),label:const Text('Review and confirm')),
+      ]))));
+    }));
+  }
+  Future<void> purchaseLedger(BuildContext c) async {
+    final grouped=purchaseHistory(s),groupedIds=grouped.expand((g)=>objects(g['lines']).map((line)=>line['eventId'])).toSet();
+    final allEvents=objects(s['events']);
+    final legacyReceipts=allEvents.where((e)=>e['type']=='restock'&&e['purchaseBatch']==null).toList().reversed.toList();
+    await showModalBottomSheet<void>(context:c,isScrollControlled:true,showDragHandle:true,builder:(b)=>SafeArea(child:SizedBox(height:MediaQuery.sizeOf(b).height*.82,child:Padding(padding:const EdgeInsets.all(20),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      Row(children:[Expanded(child:title('Purchase history')),IconButton(tooltip:'Add purchase',onPressed:()=>purchaseEntry(c),icon:const Icon(Icons.add))]),
+      const Text('Completed stock receipts use the same FIFO lots as sales reports. Retailer price observations never add stock.'),
+      const SizedBox(height:8),
+      Expanded(child:ListView(children:[
+        if(grouped.isEmpty&&legacyReceipts.isEmpty)text('No stock purchases recorded yet.'),
+        for(final g in grouped)...[
+        Builder(builder:(c){final batch=obj(g['batch']),lines=objects(g['lines']),total=lines.fold<int>(0,(n,l)=>n+l['cost'] as int);return Card(child:ExpansionTile(title:Text('${batch['supplier']} · ${money(total)}'),subtitle:Text('${displayDate(batch['date'])}${batch['location']==''?'':' · ${batch['location']}'}${batch['reference']==''?'':'\nRef ${batch['reference']}'}'),children:[for(final l in lines)ListTile(title:Text(productName(l['productId'])),subtitle:Text('${l['packCount']} × ${l['packSize']}-pack · ${l['quantity']} cans\nItems ${money(l['grossCost'])} − discount ${money(l['discount'])} + acquisition ${money(l['additionalCost'])} = recorded ${money(l['cost'])} · ${money((l['cost'] as int) ~/ (l['quantity'] as int))}/can')),if('${batch['note']}'.isNotEmpty)Padding(padding:const EdgeInsets.all(16),child:Text(batch['note']))]));}),
+        ],
+        for(final e in legacyReceipts)if(!groupedIds.contains(e['id']))Card(child:ListTile(title:Text('Stock receipt · ${money(e['cost'])}'),subtitle:Text('${objects(e['allocations']).map((a)=>'${productName(a['productId'])} · ${a['quantity']} cans').join(', ')}\n${displayDate(e['date'])}\n${e['note']}'),isThreeLine:true)),
+      ])),
+      FilledButton.icon(onPressed:()=>purchaseEntry(c),icon:const Icon(Icons.add_shopping_cart),label:const Text('Record completed purchase')),
+    ])))));
+  }
+  Future<void> purchaseEntry(BuildContext c) async {
+    final available=activeProducts(s);
+    if(available.isEmpty){ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content:Text('Add or restore a product before recording a purchase.')));return;}
+    final supplier=TextEditingController(),location=TextEditingController(),reference=TextEditingController(),note=TextEditingController();
+    final lines=[_PurchaseLineDraft(available.first['id'] as String)];
+    var date=DateTime.now().toUtc().add(const Duration(hours:8));var unknownDate=false,affectFunds=false;
+    await showDialog<void>(context:c,builder:(d)=>StatefulBuilder(builder:(d,update)=>AlertDialog(title:const Text('Record completed purchase'),content:SizedBox(width:520,child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.stretch,children:[
+      const Text('This records stock actually acquired. Each line creates one FIFO cost lot; no sale or operating expense is created.'),
+      field(supplier,'Retailer / supplier'),field(location,'Store location (optional)'),field(reference,'Receipt reference (optional)'),
+      for(var i=0;i<lines.length;i++)...[
+        const Divider(),Row(children:[Expanded(child:Text('Product line ${i+1}',style:const TextStyle(fontWeight:FontWeight.w600))),if(lines.length>1)IconButton(onPressed:()=>update(()=>lines.removeAt(i)),icon:const Icon(Icons.delete_outline),tooltip:'Remove line')]),
+        DropdownButtonFormField<String>(value:lines[i].productId,decoration:const InputDecoration(labelText:'Product / flavour'),items:[for(final p in available)DropdownMenuItem(value:p['id'] as String,child:Text(productLabel(p)))],onChanged:(v)=>update(()=>lines[i].productId=v!)),
+        Row(children:[Expanded(child:DropdownButtonFormField<int>(value:lines[i].packSize,decoration:const InputDecoration(labelText:'Pack size'),items:const [DropdownMenuItem(value:4,child:Text('4 cans')),DropdownMenuItem(value:9,child:Text('9 cans')),DropdownMenuItem(value:12,child:Text('12 cans')),DropdownMenuItem(value:24,child:Text('24 cans')),DropdownMenuItem(value:1,child:Text('Custom'))],onChanged:(v)=>update(()=>lines[i].packSize=v!)),),const SizedBox(width:10),Expanded(child:field(lines[i].customSize,'Custom cans per pack',number:true,onChanged:(_)=>update((){})))]),
+        Row(children:[Expanded(child:field(lines[i].packs,'Number of packs',number:true,onChanged:(_)=>update((){}))),const SizedBox(width:10),Expanded(child:field(lines[i].cost,'Items before discount AUD',number:true,onChanged:(_)=>update((){})))]),
+        Row(children:[Expanded(child:field(lines[i].discount,'Discount AUD',number:true,onChanged:(_)=>update((){}))),const SizedBox(width:10),Expanded(child:field(lines[i].additional,'Added acquisition cost AUD',number:true,onChanged:(_)=>update((){})))]),
+        field(lines[i].gst,'Actual eligible GST included (optional AUD)',number:true,onChanged:(_)=>update((){})),
+      Builder(builder:(_){final q=(int.tryParse(lines[i].packs.text)??0)*(lines[i].packSize==1?(int.tryParse(lines[i].customSize.text)??0):lines[i].packSize);int? lineCost;try{lineCost=cents(lines[i].cost.text)-cents(lines[i].discount.text)+cents(lines[i].additional.text);}catch(_){ }return Align(alignment:Alignment.centerLeft,child:Text('$q cans · ${q>0&&lineCost!=null?money(lineCost~/q):'Check line costs'} per can'));}),
+      ],
+      TextButton.icon(onPressed:()=>update(()=>lines.add(_PurchaseLineDraft(available.first['id'] as String))),icon:const Icon(Icons.add),label:const Text('Add another product')),
+      field(note,'Notes (discount / allocable freight / other details)'),
+      CheckboxListTile(value:affectFunds,onChanged:(v)=>update(()=>affectFunds=v!),title:const Text('Deduct this purchase from business funds'),subtitle:const Text('Off by default. Stock and costs are recorded either way.'),contentPadding:EdgeInsets.zero),
+      CheckboxListTile(value:unknownDate,onChanged:(v)=>update(()=>unknownDate=v!),title:const Text('Purchase date unknown'),contentPadding:EdgeInsets.zero),
+      if(!unknownDate)TextButton.icon(onPressed:()async{final chosen=await showDatePicker(context:d,initialDate:date,firstDate:DateTime(2000),lastDate:DateTime(2099));if(chosen!=null)update(()=>date=DateTime(chosen.year,chosen.month,chosen.day,date.hour,date.minute));},icon:const Icon(Icons.calendar_today_outlined),label:Text('Purchase date · ${date.year}-${date.month.toString().padLeft(2,'0')}-${date.day.toString().padLeft(2,'0')}')),
+    ]))),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel')),FilledButton(onPressed:()=>perform(c,()async{
+      final id=const Uuid().v4(),when=unknownDate?null:DateTime.utc(date.year,date.month,date.day,date.hour,date.minute).subtract(const Duration(hours:8)).millisecondsSinceEpoch;
+      final rows=<Obj>[];
+      for(final line in lines){final pack=line.packSize==1?integer(int.parse(line.customSize.text),1,10000):line.packSize;final count=integer(int.parse(line.packs.text),1,10000),quantity=pack*count;final gross=cents(line.cost.text),discount=line.discount.text.trim().isEmpty?0:cents(line.discount.text),additional=line.additional.text.trim().isEmpty?0:cents(line.additional.text),cost=gross-discount+additional,gst=line.gst.text.trim().isEmpty?0:cents(line.gst.text);if(quantity>10000||cost<0||gst>cost)throw const FormatException('Check pack quantity, discount, acquisition costs and GST.');rows.add({'lineId':const Uuid().v4(),'productId':line.productId,'packSize':pack,'packCount':count,'grossCost':gross,'discount':discount,'additionalCost':additional,'inputGst':gst});}
+      final entries=createPurchaseEvents(purchaseId:id,supplier:supplier.text,location:location.text,reference:reference.text,note:note.text,date:when,lines:rows,newEventId:()=>const Uuid().v4());await repo.recordPurchase(entries,affectFunds:affectFunds);if(d.mounted)Navigator.pop(d);
+    },message:'Purchase and FIFO stock saved together.'),child:const Text('Confirm purchase & receive stock'))])));
+  }
+  Future<void> transferStock(BuildContext c,Obj target) async {
+    final candidates=activeProducts(s).where((p)=>p['id']!=target['id'] && accounts.book.stock(p['id'])>0).toList();
+    if(candidates.isEmpty){ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content:Text('No stock in another product to transfer.')));return;}
+    String source=candidates.first['id'];final q=TextEditingController(text:'1'),reason=TextEditingController();
+    await showDialog<void>(context:c,builder:(d)=>StatefulBuilder(builder:(d,update)=>AlertDialog(title:Text('Transfer to ${productName(target['id'])}'),content:Column(mainAxisSize:MainAxisSize.min,children:[DropdownButtonFormField<String>(value:source,items:[for(final p in candidates)DropdownMenuItem(value:p['id'],child:Text(productName(p['id'])))],onChanged:(v)=>update(()=>source=v!)),field(q,'Quantity',number:true),field(reason,'Reason / stock identification'),const Text('Moves existing units and their FIFO costs. Total stock and profit do not change.')]),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel')),FilledButton(onPressed:()=>perform(c,()async{await repo.append({...event(id:const Uuid().v4(),type:'transfer',quantity:integer(int.parse(q.text),1,10000),note:reason.text),'from':source,'to':target['id']});if(d.mounted)Navigator.pop(d);}),child:const Text('Confirm transfer'))])));
+  }
+  Future<Obj?> photo(BuildContext c,{bool receipt=false}) async {
+    final source=await showModalBottomSheet<String>(context:c,builder:(b)=>SafeArea(child:Column(mainAxisSize:MainAxisSize.min,children:[ListTile(title:const Text('Take photo'),leading:const Icon(Icons.camera_alt_outlined),onTap:()=>Navigator.pop(b,'camera')),ListTile(title:const Text('Choose photo'),leading:const Icon(Icons.photo_outlined),onTap:()=>Navigator.pop(b,'gallery')),if(receipt)ListTile(title:const Text('Import original PDF / image'),leading:const Icon(Icons.attach_file),onTap:()=>Navigator.pop(b,'file'))])));
+    if(source==null)return null;
+    List<int> bytes;String mime;
+    if(source=='file'){final f=await FilePicker.platform.pickFiles(type:FileType.custom,allowedExtensions:['pdf','jpg','jpeg','png'],withData:true);if(f==null)return null;bytes=f.files.single.bytes ?? await File(f.files.single.path!).readAsBytes();mime=f.files.single.extension?.toLowerCase()=='pdf'?'application/pdf':f.files.single.extension?.toLowerCase()=='png'?'image/png':'image/jpeg';}
+    else {final image=await ImagePicker().pickImage(source:source=='camera'?ImageSource.camera:ImageSource.gallery,maxWidth:1600,maxHeight:1600,imageQuality:90);if(image==null)return null;bytes=await image.readAsBytes();mime='image/jpeg';}
+    mime=attachmentMime(bytes);final a=<String,dynamic>{'id':const Uuid().v4(),'mime':mime,'data':base64Encode(bytes),'sha256':bytesHash(bytes)};verifyAttachment(a);return a;
+  }
+  Future<void> editProduct(BuildContext c,[Obj? existing]) async {
+    final name=TextEditingController(text:existing?['name'] ?? ''), category=TextEditingController(text:existing?['category'] ?? ''),variant=TextEditingController(text:existing?['variant'] ?? ''),cost=TextEditingController(text:existing!=null&&existing['purchaseCost']==null?'':amount(existing?['purchaseCost'] ?? 0)),price=TextEditingController(text:existing!=null&&existing['sellingPrice']==null?'':amount(existing?['sellingPrice'] ?? 0)),deal=TextEditingController(text:existing?['twoItemPrice']==null?'':amount(existing!['twoItemPrice'])),minimum=TextEditingController(text:'${existing?['minimum'] ?? 0}'),barcode=TextEditingController(text:existing?['barcode'] ?? '');Obj? image=existing?['photo']==null?null:obj(existing!['photo']);
+    await showDialog<void>(context:c,builder:(d)=>StatefulBuilder(builder:(d,update)=>AlertDialog(title:Text(existing==null?'Add product':'Edit product'),content:SizedBox(width:440,child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[field(name,'Product name'),field(category,'Category'),field(variant,'Variant (size, flavour, shade)'),field(cost,'Default purchase cost per unit (AUD)',number:true),field(price,'Selling price per unit (AUD)',number:true),field(deal,'Optional 2-item deal TOTAL (AUD; blank disables)',number:true),field(minimum,'Low-stock minimum',number:true),field(barcode,'Barcode (leading zeros retained)'),TextButton.icon(onPressed:()async{final code=await Navigator.push<String>(d,MaterialPageRoute(builder:(_)=>const Scanner()));if(code!=null)barcode.text=code;},icon:const Icon(Icons.qr_code_scanner),label:const Text('Scan barcode')),TextButton.icon(onPressed:()async{try{final picked=await photo(d);if(picked!=null)update(()=>image=picked);}catch(e){if(d.mounted)ScaffoldMessenger.of(d).showSnackBar(SnackBar(content:Text('$e')));}},icon:const Icon(Icons.photo_camera_outlined),label:Text(image==null?'Add product photo':'Replace product photo')),if(image!=null)Image.memory(Uint8List.fromList(attachmentBytes(image!)),height:100)]))),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel')),FilledButton(onPressed:(){perform(c,()async{final p=<String,dynamic>{...?existing,'twoItemPrice':deal.text.trim().isEmpty?null:cents(deal.text),'archived':existing?['archived'] ?? false,'id':existing?['id'] ?? const Uuid().v4(),'name':name.text.trim(),'category':category.text.trim(),'variant':variant.text.trim(),'purchaseCost':cost.text.trim().isEmpty?null:cents(cost.text),'sellingPrice':price.text.trim().isEmpty?null:cents(price.text),'minimum':integer(int.parse(minimum.text),0,10000),'barcode':barcode.text.trim(),'photo':image};final next=clone(s),all=objects(next['products']);final index=all.indexWhere((x)=>x['id']==p['id']);if(index<0)all.add(p);else all[index]=p;next['products']=all;await repo.save(next);if(d.mounted)Navigator.pop(d);});},child:const Text('Save product'))])));
+  }
+  Widget field(TextEditingController controller,String label,{bool number=false,bool password=false,ValueChanged<String>? onChanged})=>Padding(padding:const EdgeInsets.symmetric(vertical:7),child:TextField(controller:controller,obscureText:password,onChanged:onChanged,keyboardType:number?const TextInputType.numberWithOptions(decimal:true):TextInputType.text,decoration:InputDecoration(labelText:label)));
+  Future<void> transaction(BuildContext c,String type,Obj? p,{Obj? source}) async {
+    if(type=='sale'){await recordSale(c,p);return;}
+    final quantity=TextEditingController(text:'1'),total=TextEditingController(text:amount(type=='sale'?p!['sellingPrice']:type=='restock'?p!['purchaseCost']:0)),fee=TextEditingController(text:'0.00'),note=TextEditingController(),gst=TextEditingController(text:'0.00');String payment='cash';Obj? attached;DateTime date=DateTime.now().toUtc().add(const Duration(hours:8));bool gstCredit=false,totalEdited=false;
+    await showDialog<void>(context:c,builder:(d)=>StatefulBuilder(builder:(d,update)=>AlertDialog(title:Text(switch(type){'sale'=>'Record sale','restock'=>'Receive stock','refund'=>'Record money refunded','return'=>'Receive physical return','expense'=>'Record business expense',_=>'Record $type stock'}),content:SizedBox(width:440,child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[if(p!=null)Text(productName(p['id'])),if(source!=null)text('Original: ${source['id']}\nRefunding money does not add stock. Physical returns are recorded separately.'),if(!['refund','expense'].contains(type))field(quantity,'Quantity',number:true,onChanged:(v){final q=int.tryParse(v);if(!totalEdited && q!=null && p!=null && ['sale','restock'].contains(type))total.text=amount((type=='sale'?p['sellingPrice']:p['purchaseCost'])*q);}),if(['sale','restock','refund','expense'].contains(type))field(total,'TOTAL amount (AUD)',number:true,onChanged:(_)=>totalEdited=true),if(type=='sale')DropdownButtonFormField<String>(value:payment,decoration:const InputDecoration(labelText:'Payment recorded'),items:const [DropdownMenuItem(value:'cash',child:Text('Cash')),DropdownMenuItem(value:'card',child:Text('Card / bank (manual)'))],onChanged:(v)=>update(()=>payment=v!)),if(type=='sale' || type=='refund')field(fee,'Actual payment / refund fee (AUD)',number:true),if(['sale','restock','expense'].contains(type))...[field(gst,'GST included (AUD)',number:true),CheckboxListTile(value:gstCredit,onChanged:(v)=>update(()=>gstCredit=v!),title:Text(type=='sale'?'GST registered: record output GST':'GST registered: claim eligible input GST'))],field(note,type=='expense'?'Expense description / category':'Note / supplier / reference'),TextButton.icon(onPressed:()async{final selected=await showDatePicker(context:d,initialDate:date,firstDate:DateTime(2000),lastDate:DateTime(2099));if(selected!=null)update(()=>date=DateTime.utc(selected.year,selected.month,selected.day,date.hour,date.minute));},icon:const Icon(Icons.calendar_today_outlined),label:Text(displayDate(date.subtract(const Duration(hours:8)).millisecondsSinceEpoch))),TextButton.icon(onPressed:()async{try{final picked=await photo(d,receipt:true);if(picked!=null)update(()=>attached=picked);}catch(e){if(d.mounted)ScaffoldMessenger.of(d).showSnackBar(SnackBar(content:Text('$e')));}},icon:const Icon(Icons.attach_file),label:Text(attached==null?'Attach receipt':'Receipt attached · replace')),if(attached!=null && attached!['mime']!='application/pdf')TextButton(onPressed:()async{try{final f=File('${Directory.systemTemp.path}/receipt-ocr-${const Uuid().v4()}.jpg');await f.writeAsBytes(attachmentBytes(attached!));final recognizer=TextRecognizer();try{final result=await recognizer.processImage(InputImage.fromFilePath(f.path));if(d.mounted)await showDialog<void>(context:d,builder:(b)=>AlertDialog(title:const Text('OCR suggestions · review manually'),content:SingleChildScrollView(child:SelectableText(result.text)),actions:[TextButton(onPressed:()=>Navigator.pop(b),child:const Text('Close'))]));}finally{await recognizer.close();await f.delete();}}catch(e){if(d.mounted)ScaffoldMessenger.of(d).showSnackBar(SnackBar(content:Text('$e')));}},child:const Text('Read receipt text (offline OCR)')),text('Check the total and quantity before saving. Receipt attachment alone never changes stock.')]))),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel')),FilledButton(onPressed:()=>perform(c,()async{final q=['refund','expense'].contains(type)?0:integer(int.parse(quantity.text),1,10000);final n=cents(total.text),tax=gstCredit?cents(gst.text):0;final e=event(id:const Uuid().v4(),type:type,quantity:q,productId:p?['id'],target:source?['id'],revenue:['sale','refund'].contains(type)?n:0,cost:['restock','expense'].contains(type)?n:0,fee:['sale','refund'].contains(type)?cents(fee.text):0,payment:type=='sale'?payment:'none',note:note.text.trim(),date:date.subtract(const Duration(hours:8)).millisecondsSinceEpoch,inputGst:['restock','expense'].contains(type)?tax:0,outputGst:type=='sale'?tax:0);await repo.append(e,attached);if(d.mounted)Navigator.pop(d);}),child:const Text('Confirm save'))])));
+  }
+  List<Widget> history(BuildContext c)=>[title('Append-only history'),text('Corrections add a reversing entry. Original records remain visible.'),for(final e in objects(s['events']).reversed)Builder(builder:(_){final lots=accounts.history[e['id']]?.lots??const <Lot>[];final cogs=lots.fold<int>(0,(sum,lot)=>sum+lot.cost);final bundle=e['bundleId']!=null;final name=e['productName']??objects(e['allocations']).map((a)=>productName(a['productId'])).join(', ');final subtitle=bundle?'${e['bundleQuantity']} × ${e['bundleName']}\n${objects(e['bundleComponents']).map((part)=>'${part['quantity']} × ${productName(part['productId'])}').join(', ')}\nRevenue ${money(e['revenue'])} · FIFO component cost ${money(cogs)} · Profit ${money((e['revenue'] as int)-cogs)}\n${displayDate(e['date'])}\n${e['note']}':'$name\n${displayDate(e['date'])}\n${e['note']}';return Card(child:ListTile(title:Text(bundle?'Bundle sale · ${e['bundleQuantity']}': '${e['type']} · ${e['quantity']} units'),subtitle:Text(subtitle),isThreeLine:true,trailing:Text(money(bundle?(e['revenue'] as int)-cogs:(e['revenue'] as int)-(e['cost'] as int))),onTap:()=>historyDetail(c,e)));})];
+  Future<void> historyDetail(BuildContext c,Obj e) async {
+    final receipts=objects(s['attachments']).where((a)=>a['eventId']==e['id']).toList();
+    await showModalBottomSheet<void>(context:c,isScrollControlled:true,showDragHandle:true,builder:(b)=>SafeArea(child:SingleChildScrollView(padding:const EdgeInsets.all(24),child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[title('${e['type']} · ${e['quantity']} units'),SelectableText('ID: ${e['id']}\n${displayDate(e['date'])}\n${e['note']}\nRevenue ${money(e['revenue'])} · Fee ${money(e['fee'])} · Purchase ${money(e['cost'])}\n${canonical(e['allocations'])}'),for(final a in receipts)...[if(a['mime']!='application/pdf')Image.memory(Uint8List.fromList(attachmentBytes(a,s)),height:240),action('Export original receipt',Icons.download,()=>perform(c,()async{await Backups.export('receipt-${a['id']}.${a['mime']=='application/pdf'?'pdf':a['mime']=='image/png'?'png':'jpg'}',attachmentBytes(a,s));},message:'Receipt export finished.'))],action('Attach receipt photo or PDF',Icons.attach_file,()async{Navigator.pop(b);await perform(c,()async{final a=await photo(c,receipt:true);if(a!=null){final next=clone(s);(next['attachments'] as List).add({...a,'eventId':e['id']});await repo.save(next);}});}),if(['single','deal','sale'].contains(e['type']))...[action('Record manual money refund',Icons.currency_exchange,(){Navigator.pop(b);transaction(c,'refund',null,source:e);}),action('Receive physically returned stock',Icons.assignment_return_outlined,(){Navigator.pop(b);transaction(c,'return',null,source:e);})],if(!['undo','transfer','refund_observation'].contains(e['type']))action('Correct this entry',Icons.undo,(){Navigator.pop(b);correct(c,e);})]))));
+  }
+  Future<void> correct(BuildContext c,Obj e) async {final reason=TextEditingController();await showDialog<void>(context:c,builder:(d)=>AlertDialog(title:const Text('Append a correction'),content:Column(mainAxisSize:MainAxisSize.min,children:[const Text('This reverses the bookkeeping entry. It does not issue a payment refund.'),field(reason,'Reason')]),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel')),FilledButton(onPressed:()=>perform(c,()async{await repo.append(event(id:const Uuid().v4(),type:'undo',target:e['id'],note:reason.text));if(d.mounted)Navigator.pop(d);}),child:const Text('Confirm correction'))]));}
+  List<Widget> reports(BuildContext c) {
+    final range=period=='custom'&&customDates!=null?(DateTime.utc(customDates!.start.year,customDates!.start.month,customDates!.start.day).subtract(const Duration(hours:8)).millisecondsSinceEpoch,DateTime.utc(customDates!.end.year,customDates!.end.month,customDates!.end.day+1).subtract(const Duration(hours:8)).millisecondsSinceEpoch):reportRange(period=='custom'?'all':period,DateTime.now());
+    final totals=accounts.summary(range.$1,range.$2);
+    final productSales=accounts.salesProfit(objects(s['products']),range.$1,range.$2), rows=objects(productSales['products']);
+    final sortKey=switch(productSort){'profit'=>'profit','units'=>'unitsSold','future'=>'futureRevenue',_=>'revenue'};rows.sort((a,b){final av=a[sortKey],bv=b[sortKey];if(av is! int)return bv is! int?0:1;if(bv is! int)return -1;return bv.compareTo(av);});
+    return [title('Sales & Profit Overview'),DropdownButtonFormField<String>(value:period,items:[for(final p in ['all','day','week','month','quarter','year','financial year','custom'])DropdownMenuItem(value:p,child:Text(p=='all'?'All recorded history':p=='day'?'Today':p=='custom'?'Custom date range':p))],onChanged:(v)async{if(v=='custom'){final picked=await showDateRangePicker(context:c,firstDate:DateTime(2000),lastDate:DateTime(2099),initialDateRange:customDates);if(picked==null)return;setState(()=>customDates=picked);}setState(()=>period=v!);}),if(period=='custom'&&customDates!=null)text('Selected ${customDates!.start.toString().substring(0,10)} to ${customDates!.end.toString().substring(0,10)} (Perth dates).'),text('Historical sales and product profit use this range. Future estimates always use current inventory as of today and current selling prices. Estimates are not guaranteed.'),for(final pair in [('Sales Revenue Earned','revenue'),('Product Profit Earned','profit'),('Potential Future Revenue · estimate','futureRevenue'),('Potential Future Product Profit · estimate','futureProfit'),('Total Potential Revenue · estimate','totalRevenue'),('Total Potential Product Profit · estimate','totalProfit')])ListTile(title:Text(pair.$1),trailing:Text(moneyOrIncomplete(productSales[pair.$2]),style:const TextStyle(fontWeight:FontWeight.w700))),if((productSales['unknownEarnedCostUnits'] as int)>0||(productSales['unknownCostUnits'] as int)>0||(productSales['unknownPriceUnits'] as int)>0)text('Incomplete: ${productSales['unknownEarnedCostUnits']} sold units and ${productSales['unknownCostUnits']} remaining units lack reliable purchase cost; ${productSales['unknownPriceUnits']} remaining units lack a usable selling price.'),title('Product performance'),DropdownButtonFormField<String>(value:productSort,decoration:const InputDecoration(labelText:'Sort by'),items:const [DropdownMenuItem(value:'revenue',child:Text('Revenue earned')),DropdownMenuItem(value:'profit',child:Text('Product profit earned')),DropdownMenuItem(value:'units',child:Text('Units sold')),DropdownMenuItem(value:'future',child:Text('Potential future revenue'))],onChanged:(v)=>setState(()=>productSort=v!)),for(final p in rows)Card(child:ListTile(title:Text('${p['name']}${p['variant']==''?'':' · ${p['variant']}'}'),subtitle:Text('Units sold ${p['unitsSold']} · Revenue ${money(p['revenue'])} · Product profit ${money(p['profit'])}\nSellable now ${p['remaining']} · Potential revenue ${moneyOrIncomplete(p['futureRevenue'])} · Potential profit ${moneyOrIncomplete(p['futureProfit'])}'),isThreeLine:true)),title('Existing net profit & accounting'),text('FIFO costing • AUD • Perth dates\nUnknown historical dates appear in all-history totals only.'),for(final pair in [('revenue','Sales less refunds'),('cogs','Cost of goods sold'),('grossProfit','Gross profit'),('fees','Payment / refund fees'),('expenses','Business expenses, excluding claimed GST'),('losses','Missing / damaged stock cost'),('netProfit','Estimated net profit'),('inventoryValue','Current stock value'),('outputGst','Output GST'),('inputGst','Input GST credits')])ListTile(title:Text(pair.$2),trailing:Text(money(totals[pair.$1]),style:const TextStyle(fontWeight:FontWeight.w700))),text('${totals['unknownDates']} report rows have unknown dates. Stock value is current, independent of the selected period.'),action('Export financial CSV',Icons.table_view,()=>perform(c,()async{final rows=accounts.rows.where((r)=>range.$1==null || r['date']!=null && r['date']>=range.$1 && r['date']<range.$2);final keys=['id','kind','date','productId',...sums,'note'];final csv='${keys.map((k)=>sums.contains(k)?'${k}_cents':k=='date'?'date_utc_epoch_ms':k).join(',')}\r\n${rows.map((r)=>keys.map((k)=>csvCell(r[k])).join(',')).join('\r\n')}';await Backups.export('financial-report-cents.csv',utf8.encode(csv));},message:'Financial export finished.'))];
+  }
+  Future<void> pickStock(BuildContext c) async {
+    final p=await showModalBottomSheet<Obj>(context:c,showDragHandle:true,builder:(b)=>SafeArea(child:ListView(shrinkWrap:true,children:[title('Add stock · choose product'),for(final p in activeProducts(s))ListTile(title:Text(productLabel(p)),onTap:()=>Navigator.pop(b,p))])));
+    if(p!=null && c.mounted)await transaction(c,'restock',p);
+  }
+  List<Widget> settings(BuildContext c)=>[title('Your business'),action('Change business name',Icons.storefront_outlined,()=>businessName(c)),DropdownButtonFormField<String>(value:s['theme'],decoration:const InputDecoration(labelText:'Appearance'),items:[for(final t in themes)DropdownMenuItem(value:t,child:Text(t))],onChanged:(v)=>perform(c,()async{final next=clone(s);next['theme']=v;await repo.save(next);})),title('Features & Modules'),text('Each module can be turned off independently. Disabling a module hides its tools but keeps its saved records.'),for(final key in moduleKeys)SwitchListTile(key:ValueKey('module-toggle-$key'),contentPadding:EdgeInsets.zero,title:Text(moduleNames[key]!),subtitle:Text(switch(key){moduleCustomerAccounts=>'Customer-linked sales and IOU balances',modulePriceComparison=>'Manual retailer offer comparison',moduleForecasting=>'Estimates from recorded sales',moduleBundles=>'Create, import and sell component-based bundles',_=>'Budget-limited low-stock suggestions'}),value:moduleEnabled(s,key),onChanged:(enabled)=>perform(c,()async{final next=clone(s);setModuleEnabled(next,key,enabled);await repo.save(next);},message:enabled?'Module enabled. Existing records retained.':'Module disabled. Existing records retained.')),title('Backups & recovery'),action('Export encrypted full backup',Icons.lock_outline,()=>exportBackup(c,true)),action('Export full JSON backup',Icons.data_object,()=>exportBackup(c,false)),action('Export sales / stock history CSV',Icons.table_view,()=>perform(c,()async{final keys=['id','type','date','recordedAt','quantity','payment','revenue','fee','cost','inputGst','outputGst','delta','feeDelta','target','from','to','note','allocations','bundleId','bundleName','bundleQuantity','bundleComponents','standaloneAllocations'];final header=keys.map((k)=>['revenue','fee','cost','inputGst','outputGst','delta','feeDelta'].contains(k)?'${k}_cents':k=='date'||k=='recordedAt'?'${k}_utc_epoch_ms':k).join(',');final rows=objects(s['events']).map((e)=>keys.map((k)=>csvCell(k=='allocations'?canonical(e[k]):e[k])).join(','));await Backups.export('sales-stock-history.csv',utf8.encode('$header\r\n${rows.join('\r\n')}'));},message:'Sales / stock history export finished.')),action('Import / restore backup',Icons.restore,()=>restore(c)),action('Automatic encrypted backups',Icons.schedule,()=>backupSettings(c)),action('Choose automatic backup folder',Icons.create_new_folder_outlined,()=>perform(c,()async{final folder=await BackupDestination.choose();if(folder!=null)await secrets.write(key:'backup-folder',value:folder);},message:'Folder selection finished. Use Back up now to verify provider access.')),action('Clear automatic backup folder',Icons.folder_off_outlined,()=>perform(c,()=>secrets.delete(key:'backup-folder'))),action('Back up now (scheduled password)',Icons.save_outlined,()=>perform(c,()async{final p=await secrets.read(key:'backup-password');if(p==null)throw const FormatException('Configure encrypted automatic backups first.');await Backups.recovery(s,p);},message:'Encrypted recovery and optional provider copy verified.')),action('View local recovery copies',Icons.history,()=>recoveryCopies(c)),if(s['legacy']!=null)...[action('Export original Monster-compatible backup',Icons.archive_outlined,()=>perform(c,()async{await Backups.export('original-monster-backup.json',utf8.encode(canonical(s['legacy'])));},message:'Original backup export finished.')),action('View original purchases, receipts & audit',Icons.folder_open,()=>legacyDocuments(c))],text('Full backups include product photos and receipt bytes. JSON is unencrypted. Keep a verified backup outside this phone. Uninstalling or clearing app data removes local records and recovery copies. Original Monster exports contain only the original history, not new universal transactions.'),title('Google Sheets'),text(syncStatus.isEmpty?'Connect a Google account to upload reports. All records save on this phone first.':syncStatus),action('Connect Google Sheets',Icons.link,()=>connectSheets(c)),action('Preview upload tabs and data',Icons.preview_outlined,()=>previewSheets(c)),action('Open spreadsheet',Icons.open_in_new,()=>perform(c,()async{final id=await secrets.read(key:'sheets-google-id');if(id==null)throw const FormatException('Connect and choose a spreadsheet first.');if(!await launchUrl(Uri.https('docs.google.com','/spreadsheets/d/$id/edit'),mode:LaunchMode.externalApplication))throw const FormatException('Could not open spreadsheet.');},message:'Spreadsheet opened.')),action('Automatic uploads',Icons.sync,()=>uploadSettings(c)),action('Disconnect Google Sheets',Icons.link_off,()=>perform(c,()async{await Sheets.disconnect();await refreshSyncStatus();},message:'Disconnected. Local records and spreadsheet retained.')),action('Advanced: existing Apps Script connection',Icons.code,()=>sheetsSettings(c)),action('Upload now',Icons.cloud_upload_outlined,()=>perform(c,()async{await Sheets.upload(s,force:true);await refreshSyncStatus();},message:'Google Sheets upload acknowledged.')),action('Refresh upload status',Icons.refresh,()=>perform(c,()async{await refreshSyncStatus();},message:'Status refreshed.')),text('Uploads are one-way. Spreadsheet edits never change local records. Amounts are integer AUD cents; dates are UTC epoch milliseconds. Automatic uploads retry on app open, save and scheduled background work. The phone controls background timing. Credentials stay outside backups.'),title('About'),text('Business Tracker 2.3.3 (20)\nLocal records • No business account required\nNo payment processing, website integration or commissions.')];
+  Future<String?> password(BuildContext c,String title) async {final controller=TextEditingController();return showDialog<String>(context:c,builder:(d)=>AlertDialog(title:Text(title),content:field(controller,'Password (10–200 characters)',password:true),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(d,controller.text),child:const Text('Continue'))]));}
+  Future<void> exportBackup(BuildContext c,bool encrypted) async {final p=encrypted?await password(c,'Encrypt portable backup'):null;if(encrypted&&p==null)return;if(!c.mounted)return;await perform(c,()async{final bytes=encrypted?await Backups.encrypt(s,p!):utf8.encode(encodeBackup(s));await Backups.export(encrypted?'business-backup.businessbk':'business-backup.json',bytes);},message:'Backup export finished. Keep it outside this phone.');}
+  Future<Uint8List?> _pickBackupBytes() async {final files=await FilePicker.platform.pickFiles(withData:true);if(files==null)return null;final f=files.files.single;return f.bytes??await File(f.path!).readAsBytes();}
+  Future<void> restore(BuildContext c) async {await perform(c,()async{final bytes=widget.pickBackupBytes!=null?await widget.pickBackupBytes!():await _pickBackupBytes();if(bytes==null)return;String p='';if(!Backups.isPlainJson(bytes)){if(!c.mounted)return;p=await password(c,'Decrypt backup') ?? '';if(p.isEmpty)return;}final incoming=await Backups.decode(bytes,p),totals=validateState(incoming).summary();if(!c.mounted)return;final yes=await showDialog<bool>(context:c,builder:(d)=>AlertDialog(title:const Text('Review restore'),content:Text('${incoming['businessName']}\n${objects(incoming['products']).length} products\n${objects(incoming['events']).length} history records\nRevenue ${money(totals['revenue'])}\nInventory ${money(totals['inventoryValue'])}\n\nAn empty installation accepts the full backup. Existing history is never overwritten. Business settings and photos are included.'),actions:[TextButton(onPressed:()=>Navigator.pop(d,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(d,true),child:const Text('Restore'))]));if(yes==true)await repo.restore(incoming);},message:'Backup checked. Restore finished if confirmed.');}
+  Future<void> businessName(BuildContext c) async {final name=TextEditingController(text:s['businessName']);await showDialog<void>(context:c,builder:(d)=>AlertDialog(title:const Text('Business name'),content:field(name,'Name'),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel')),FilledButton(onPressed:()=>perform(c,()async{final next=clone(s);next['businessName']=name.text.trim();await repo.save(next);if(d.mounted)Navigator.pop(d);}),child:const Text('Save'))]));}
+  Future<void> refreshSyncStatus() async {
+    final last=await secrets.read(key:'sheets-last'),error=await secrets.read(key:'sheets-error'),mode=await secrets.read(key:'sheets-mode'),auto=await secrets.read(key:'sheets-auto');
+    String pending='';
+    if(mode=='google'){
+      final hash=await secrets.read(key:'sheets-snapshot');
+      final snapshot=sheetSnapshot(s),count=snapshot.values.fold<int>(0,(n,rows)=>n+rows.length-1);
+      pending=hash==digest(snapshot)?'No pending changes':'Pending report changes · $count current rows';
+    }else if(await secrets.read(key:'sheets-url')!=null){
+      final url=await secrets.read(key:'sheets-url');final ack=await repo.db.query('sync_ack',where:'destination=? AND business_id=?',whereArgs:[url,s['businessId']]);final hashes={for(final a in ack)a['record_id']:a['hash']};
+      pending='${syncRecords(s).where((r)=>hashes[r['id']]!=digest(r)).length} pending records';
+    }
+    final email=await secrets.read(key:'sheets-email');
+    if(mounted)setState(()=>syncStatus='${mode=='google'?'Google · ${email ?? ''}':awaitedLabel(mode)}\nLast successful upload: ${last ?? 'Never'}\n$pending\nAutomatic uploads: ${auto=='true'?'On':'Off'}${error==null || error.isEmpty?'':'\n$error'}');
+  }
+  String awaitedLabel(String? mode)=>mode=='script'?'Advanced Apps Script':'Not connected';
+  Future<void> previewSheets(BuildContext c) async {
+    final snapshot=sheetSnapshot(s);
+    await showDialog<void>(context:c,builder:(d)=>AlertDialog(title:const Text('Upload preview'),content:SizedBox(width:600,child:SingleChildScrollView(child:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[const Text('One-way report mirror. Money is AUD cents; dates are UTC epoch milliseconds. Each installation has separate tabs. Photos and receipt bytes remain in backups. OriginalDocuments includes supplier lines. Corrections retain their target IDs.'),for(final entry in snapshot.entries)...[title('${entry.key} · ${entry.value.length-1} rows'),SelectableText(entry.value.take(4).map((r)=>r.join(' | ')).join('\n')),const Divider()]]))),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Close'))]));
+  }
+  Future<void> uploadSettings(BuildContext c) async {
+    var auto=await secrets.read(key:'sheets-auto')=='true';if(!c.mounted)return;
+    await showDialog<void>(context:c,builder:(d)=>StatefulBuilder(builder:(d,update)=>AlertDialog(title:const Text('Automatic uploads'),content:SwitchListTile(title:const Text('Upload after changes and retry when connected'),subtitle:const Text('Background timing is controlled by Android/iOS.'),value:auto,onChanged:(v)=>update(()=>auto=v)),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel')),FilledButton(onPressed:()=>perform(c,()async{await Sheets.automaticUploads(auto);await refreshSyncStatus();if(d.mounted)Navigator.pop(d);}),child:const Text('Save'))])));
+  }
+  Future<void> connectSheets(BuildContext c) async {
+    List<Obj>? files;
+    await perform(c,()=>Sheets.exclusive((_) async {
+      await Sheets.automaticUploads(false);
+      await GoogleSheets.connect();
+      files=await GoogleSheets.available();
+    }),message:'Google account selected.');
+    if(files==null || !c.mounted)return;
+    final choice=await showDialog<String>(context:c,builder:(d)=>AlertDialog(title:const Text('Choose spreadsheet'),content:SizedBox(width:440,child:ListView(shrinkWrap:true,children:[ListTile(leading:const Icon(Icons.add),title:const Text('Create a new spreadsheet'),onTap:()=>Navigator.pop(d,'new')),ListTile(leading:const Icon(Icons.folder_open),title:const Text('Choose an existing spreadsheet'),subtitle:const Text('Browse Google Drive with Google Picker'),onTap:()=>Navigator.pop(d,'pick')),const Text('Recently authorized spreadsheets'),for(final f in files!)ListTile(title:Text(f['name']),onTap:()=>Navigator.pop(d,f['id']))])),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel'))]));
+    if(choice==null || !c.mounted)return;
+    var selected=false;
+    await perform(c,()=>Sheets.exclusive((_) async {
+      final id=choice=='new'?(await GoogleSheets.create('${s['businessName']} · Tracker reports'))['spreadsheetId'] as String:choice=='pick'?await GoogleSheets.pick():choice;
+      await GoogleSheets.select(id);selected=true;
+      await refreshSyncStatus();
+    }),message:'Spreadsheet connected.');
+    if(!selected || !c.mounted)return;
+    await previewSheets(c);
+    if(c.mounted)await uploadSettings(c);
+  }
+  Future<void> sheetsSettings(BuildContext c) async {final url=TextEditingController(text:await secrets.read(key:'sheets-url') ?? ''),token=TextEditingController();bool auto=await secrets.read(key:'sheets-auto')=='true';if(!c.mounted)return;await showDialog<void>(context:c,builder:(d)=>StatefulBuilder(builder:(d,update)=>AlertDialog(title:const Text('Advanced Apps Script connection'),content:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[field(url,'Apps Script /exec URL'),field(token,'Private token (blank keeps existing)',password:true),CheckboxListTile(value:auto,onChanged:(v)=>update(()=>auto=v!),title:const Text('Automatically upload records')),const Text('Use a separate spreadsheet and token for each business. Do not share the token.') ])),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel')),FilledButton(onPressed:()=>perform(c,()async{final secret=token.text.isEmpty?await secrets.read(key:'sheets-token') ?? '':token.text;await Sheets.configure(url.text,secret,auto);if(d.mounted)Navigator.pop(d);if(auto)unawaited(automatic());}),child:const Text('Save connection'))])));}
+  Future<void> backupSettings(BuildContext c) async {final p=await password(c,'Enable scheduled encrypted backups');if(p==null || !c.mounted)return;String frequency='daily';await showDialog<void>(context:c,builder:(d)=>StatefulBuilder(builder:(d,update)=>AlertDialog(title:const Text('Backup schedule'),content:Column(mainAxisSize:MainAxisSize.min,children:[DropdownButton<String>(value:frequency,items:const [DropdownMenuItem(value:'daily',child:Text('Daily')),DropdownMenuItem(value:'weekly',child:Text('Weekly'))],onChanged:(v)=>update(()=>frequency=v!)),const Text('Keeps seven verified encrypted copies inside this app. Also export off-device. Background timing is controlled by the phone.')]),actions:[TextButton(onPressed:()=>perform(c,()async{await Workmanager().cancelByUniqueName('au.monster.tracker.plus.backup');await secrets.delete(key:'backup-password');await secrets.delete(key:'backup-frequency');if(d.mounted)Navigator.pop(d);}),child:const Text('Disable schedule')),FilledButton(onPressed:()=>perform(c,()async{Backups.password(p);await Backups.recovery(s,p);await secrets.write(key:'backup-password',value:p);await secrets.write(key:'backup-frequency',value:frequency);await secrets.write(key:'backup-last',value:'${DateTime.now().millisecondsSinceEpoch}');await Workmanager().registerPeriodicTask('au.monster.tracker.plus.backup','au.monster.tracker.plus.backup',frequency:Duration(days:frequency=='weekly'?7:1));if(d.mounted)Navigator.pop(d);}),child:const Text('Verify backup & enable'))])));}
+  Future<void> recoveryCopies(BuildContext c) async {final files=await Backups.recoveryFiles();if(!c.mounted)return;await showDialog<void>(context:c,builder:(d)=>AlertDialog(title:const Text('Local recovery copies'),content:SizedBox(width:400,child:ListView(shrinkWrap:true,children:[if(files.isEmpty)const Text('No local recovery copies yet.'),for(final f in files)ListTile(title:Text(f.uri.pathSegments.last),subtitle:const Text('Export, then restore through Import backup'),onTap:()=>perform(c,()async{await Backups.export(f.uri.pathSegments.last,await f.readAsBytes());},message:'Recovery export finished.'))])),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Close'))]));}
+  Future<void> legacyDocuments(BuildContext c) async {final b=obj(s['legacy']?['business'] ?? {});await showDialog<void>(context:c,builder:(d)=>AlertDialog(title:const Text('Original supplier records & audit'),content:SizedBox(width:450,child:ListView(shrinkWrap:true,children:[for(final doc in objects(b['documents'] ?? []))ListTile(title:Text('${doc['kind']} · ${doc['supplier']}'),subtitle:Text('${displayDate(doc['date'])}\n${money(doc['amount'])} · ${doc['reference']}\n${doc['note']}'),onTap:()async{final receipt=objects(b['receipts'] ?? []).where((r)=>r['hash']==doc['receiptHash']).firstOrNull;if(receipt!=null)await perform(c,()async{await Backups.export('supplier-${receipt['hash']}.${receipt['mime']=='application/pdf'?'pdf':receipt['mime']=='image/png'?'png':'jpg'}',base64Decode(receipt['content']));},message:'Original supplier receipt exported.');}),text('Original documents are retained without adding stock again. Receive new goods through Products → Receive / restock.'),SelectableText(canonical({'deliveries':b['deliveries'] ?? [],'cancellations':b['cancellations'] ?? [],'audit':b['audit'] ?? [],'refunds':b['refunds'] ?? {}}))])),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Close'))]));}
+  Future<void> scan(BuildContext c) async {final code=await Navigator.push<String>(c,MaterialPageRoute(builder:(_)=>const Scanner()));if(code==null || !c.mounted)return;final aliases=objects(s['legacy']?['business']?['catalog']?['barcodes'] ?? []);final alias=aliases.where((a)=>a['code']==code).firstOrNull;final p=objects(s['products']).where((p)=>p['barcode']==code).firstOrNull ?? objects(s['products']).where((p)=>p['id']==alias?['productId']).firstOrNull;if(p==null){ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text('No product mapped to $code. Add it in product settings.')));}else if(p['archived']==true){ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content:Text('This product is archived. Restore it from Archived products first.')));}else{await product(c,p);}}
+}
+class Scanner extends StatefulWidget {const Scanner({super.key});@override State<Scanner> createState()=>_ScannerState();}
+class _ScannerState extends State<Scanner> {bool done=false;@override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('Scan product barcode')),body:MobileScanner(onDetect:(capture){for(final b in capture.barcodes){if(!done && b.rawValue!=null){done=true;Navigator.pop(context,b.rawValue);break;}}}));}
+class _PurchaseLineDraft {
+  String productId;
+  int packSize=24;
+  final packs=TextEditingController(text:'1');
+  final customSize=TextEditingController(text:'1');
+  final cost=TextEditingController(text:'0.00');
+  final discount=TextEditingController(text:'0.00');
+  final additional=TextEditingController(text:'0.00');
+  final gst=TextEditingController(text:'0.00');
+  _PurchaseLineDraft(this.productId);
+}

@@ -1,0 +1,13 @@
+group 'au.monster.tracker.backup'
+version '1.0-SNAPSHOT'
+buildscript {
+    repositories { google(); mavenCentral() }
+    dependencies { classpath 'com.android.tools.build:gradle:8.7.3' }
+}
+apply plugin: 'com.android.library'
+android {
+    namespace 'au.monster.tracker.backup'
+    compileSdk 35
+    defaultConfig { minSdk 26 }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+}

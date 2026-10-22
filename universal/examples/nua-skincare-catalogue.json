@@ -1,0 +1,19 @@
+{
+  "format": "business-tracker-catalogue",
+  "version": 1,
+  "catalogueId": "nua-skincare-australia-v1",
+  "catalogueName": "NUA Skincare Australia",
+  "category": "Skincare",
+  "currency": "AUD",
+  "products": [
+    {"id":"nua-calm-cleanse-200ml","name":"NUA Calm Cleanse","variant":"200 mL","category":"Skincare","barcode":"","archived":false,"minimum":0,"photo":null,"purchaseCost":null,"sellingPrice":null,"twoItemPrice":null},
+    {"id":"nua-pure-gel-cleanse-200ml","name":"NUA Pure Gel Cleanse","variant":"200 mL","category":"Skincare","barcode":"","archived":false,"minimum":0,"photo":null,"purchaseCost":null,"sellingPrice":null,"twoItemPrice":null},
+    {"id":"nua-rebalance-mist-125ml","name":"NUA Rebalance Mist","variant":"125 mL","category":"Skincare","barcode":"","archived":false,"minimum":0,"photo":null,"purchaseCost":null,"sellingPrice":null,"twoItemPrice":null},
+    {"id":"nua-hydrate-serum-30ml","name":"NUA Hydrate Serum","variant":"30 mL","category":"Skincare","barcode":"","archived":false,"minimum":0,"photo":null,"purchaseCost":null,"sellingPrice":null,"twoItemPrice":null},
+    {"id":"nua-barrier-restore-60ml","name":"NUA Barrier Restore","variant":"60 mL","category":"Skincare","barcode":"","archived":false,"minimum":0,"photo":null,"purchaseCost":null,"sellingPrice":null,"twoItemPrice":null}
+  ],
+  "bundles": [
+    {"id":"nua-the-calm-ritual","name":"NUA The Calm Ritual","category":"Skincare","description":"","sellingPrice":null,"photo":null,"archived":false,"components":[{"productId":"nua-calm-cleanse-200ml","quantity":1},{"productId":"nua-rebalance-mist-125ml","quantity":1},{"productId":"nua-hydrate-serum-30ml","quantity":1},{"productId":"nua-barrier-restore-60ml","quantity":1}]},
+    {"id":"nua-the-essentials-ritual","name":"NUA The Essentials Ritual","category":"Skincare","description":"","sellingPrice":null,"photo":null,"archived":false,"components":[{"productId":"nua-pure-gel-cleanse-200ml","quantity":1},{"productId":"nua-rebalance-mist-125ml","quantity":1},{"productId":"nua-hydrate-serum-30ml","quantity":1},{"productId":"nua-barrier-restore-60ml","quantity":1}]}
+  ]
+}

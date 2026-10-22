@@ -11,3 +11,13 @@ backend/data/
 *.jks
 
 .signing/
+
+
+.build-phase*-results.txt
+**/.dart_tool/
+**/.flutter-plugins*
+universal/android/local.properties
+universal/ios/Pods/
+universal/ios/.symlinks/
+**/device-evidence/
+**/__pycache__/

@@ -1,0 +1,25 @@
+CREATE TABLE audit (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, recorded_at INTEGER NOT NULL, occurred_at INTEGER, action TEXT NOT NULL, entity_id TEXT NOT NULL, payload TEXT NOT NULL, event_id TEXT UNIQUE REFERENCES events(id));
+INSERT INTO audit(id,recorded_at,occurred_at,action,entity_id,payload,event_id) SELECT 'ledger-'||id,recorded_at,timestamp,'ledger.'||type,id,'{}',id FROM events ORDER BY seq;
+CREATE TRIGGER audit_ledger_insert AFTER INSERT ON events BEGIN INSERT INTO audit(id,recorded_at,occurred_at,action,entity_id,payload,event_id) VALUES('ledger-'||NEW.id,NEW.recorded_at,NEW.timestamp,'ledger.'||NEW.type,NEW.id,'{}',NEW.id); END;
+CREATE TRIGGER audit_no_update BEFORE UPDATE ON audit BEGIN SELECT RAISE(ABORT,'Audit history is append-only'); END;
+CREATE TRIGGER audit_no_delete BEFORE DELETE ON audit BEGIN SELECT RAISE(ABORT,'Audit history is append-only'); END;
+CREATE TABLE supplier_receipts (hash TEXT PRIMARY KEY CHECK(length(hash)=64), mime TEXT NOT NULL CHECK(mime IN ('image/jpeg','image/png','application/pdf')), content BLOB NOT NULL CHECK(length(content)>0 AND length(content)<=16777216));
+CREATE TRIGGER supplier_receipts_no_update BEFORE UPDATE ON supplier_receipts BEGIN SELECT RAISE(ABORT,'Original supplier_receipts are immutable'); END;
+CREATE TRIGGER supplier_receipts_no_delete BEFORE DELETE ON supplier_receipts BEGIN SELECT RAISE(ABORT,'Original supplier_receipts are immutable'); END;
+CREATE TABLE documents (id TEXT PRIMARY KEY, kind TEXT NOT NULL CHECK(kind IN ('purchase','expense')), receipt_hash TEXT UNIQUE REFERENCES supplier_receipts(hash), invoice_key TEXT UNIQUE, body TEXT NOT NULL);
+CREATE TABLE purchase_lines (id TEXT PRIMARY KEY, document_id TEXT NOT NULL REFERENCES documents(id), body TEXT NOT NULL);
+CREATE TABLE deliveries (id TEXT PRIMARY KEY, line_id TEXT NOT NULL REFERENCES purchase_lines(id), event_id TEXT NOT NULL UNIQUE REFERENCES events(id), body TEXT NOT NULL);
+CREATE TABLE document_cancellations (id TEXT PRIMARY KEY, document_id TEXT NOT NULL UNIQUE REFERENCES documents(id), body TEXT NOT NULL);
+CREATE TRIGGER documents_no_update BEFORE UPDATE ON documents BEGIN SELECT RAISE(ABORT,'Purchase history is append-only'); END;
+CREATE TRIGGER documents_no_delete BEFORE DELETE ON documents BEGIN SELECT RAISE(ABORT,'Purchase history is append-only'); END;
+CREATE TRIGGER purchase_lines_no_update BEFORE UPDATE ON purchase_lines BEGIN SELECT RAISE(ABORT,'Purchase lines are append-only'); END;
+CREATE TRIGGER purchase_lines_no_delete BEFORE DELETE ON purchase_lines BEGIN SELECT RAISE(ABORT,'Purchase lines are append-only'); END;
+CREATE TRIGGER deliveries_no_update BEFORE UPDATE ON deliveries BEGIN SELECT RAISE(ABORT,'Delivery history is append-only'); END;
+CREATE TRIGGER deliveries_no_delete BEFORE DELETE ON deliveries BEGIN SELECT RAISE(ABORT,'Delivery history is append-only'); END;
+CREATE TRIGGER cancellations_no_update BEFORE UPDATE ON document_cancellations BEGIN SELECT RAISE(ABORT,'Corrections are append-only'); END;
+CREATE TRIGGER cancellations_no_delete BEFORE DELETE ON document_cancellations BEGIN SELECT RAISE(ABORT,'Corrections are append-only'); END;
+
+INSERT INTO audit(id,recorded_at,occurred_at,action,entity_id,payload,event_id) SELECT 'photo-'||id,created_at,created_at,'receipt.photo',event_id,'{}',NULL FROM receipts ORDER BY rowid;
+CREATE TRIGGER audit_photo_insert AFTER INSERT ON receipts BEGIN INSERT INTO audit(id,recorded_at,occurred_at,action,entity_id,payload,event_id) VALUES('photo-'||NEW.id,NEW.created_at,NEW.created_at,'receipt.photo',NEW.event_id,'{}',NULL); END;
+CREATE TRIGGER photos_no_update BEFORE UPDATE ON receipts BEGIN SELECT RAISE(ABORT,'Original receipt photos are immutable'); END;
+CREATE TRIGGER photos_no_delete BEFORE DELETE ON receipts BEGIN SELECT RAISE(ABORT,'Original receipt photos are immutable'); END;

@@ -1,0 +1,19 @@
+package au.monster.tracker;
+import android.content.Context;
+import android.net.Uri;
+import android.provider.DocumentsContract;
+import java.io.*;
+import java.nio.charset.StandardCharsets;
+import java.time.*;
+import java.util.*;
+
+/** App-private atomic recovery copies plus optional SAF provider copies. No silent record overwrite. */
+public final class BackupFiles {
+    public static byte[] read(InputStream in)throws IOException{if(in==null)throw new IOException("Backup cannot be opened.");try(ByteArrayOutputStream out=new ByteArrayOutputStream()){byte[] buffer=new byte[8192];int n;while((n=in.read(buffer))!=-1){if(out.size()+n>EncryptedBackup.MAX_BYTES)throw new IOException("Backup exceeds the supported 64 MB limit.");out.write(buffer,0,n);}return out.toByteArray();}}
+    public static File directory(Context context)throws IOException{File dir=new File(context.getFilesDir(),"encrypted-recovery");if(!dir.isDirectory()&&!dir.mkdirs())throw new IOException("Local backup folder unavailable.");return dir;}
+    public static List<File> files(Context context)throws IOException{File[] candidates=directory(context).listFiles((dir,name)->name.matches("monster-auto-[0-9T-]+-[a-f0-9-]{36}\\.monsterbackup"));List<File> files=new ArrayList<>();if(candidates!=null)Collections.addAll(files,candidates);files.sort(Comparator.comparingLong(File::lastModified).reversed());return files;}
+    public static File create(Context context,char[] password)throws Exception{byte[] encrypted;try(Store store=new Store(context)){encrypted=EncryptedBackup.encrypt(Backup.encode(store.fullBackup()).getBytes(StandardCharsets.UTF_8),password);}File dir=directory(context);String name="monster-auto-"+LocalDateTime.now(Ledger.PERTH).toString().replace(':','-').replace('.','-')+"-"+Ledger.id()+".monsterbackup";File target=new File(dir,name),temporary=new File(dir,name+".partial");try{try(FileOutputStream out=new FileOutputStream(temporary)){out.write(encrypted);out.getFD().sync();}byte[] readback;try(InputStream in=new FileInputStream(temporary)){readback=read(in);}EncryptedBackup.decode(readback,password);if(!temporary.renameTo(target))throw new IOException("Verified backup could not be finalized.");return target;}finally{temporary.delete();}}
+    public static void retain(Context context,int count)throws IOException{var files=files(context);for(int i=count;i<files.size();i++)if(!files.get(i).delete())throw new IOException("Latest backup is safe, but an old local recovery copy could not be removed.");}
+    public static void copy(Context context,File source,String folder)throws Exception{if(folder.isEmpty())return;Uri tree=Uri.parse(folder),parent=DocumentsContract.buildDocumentUriUsingTree(tree,DocumentsContract.getTreeDocumentId(tree));Uri destination=DocumentsContract.createDocument(context.getContentResolver(),parent,"application/octet-stream",source.getName());if(destination==null)throw new IOException("Provider did not create the backup file.");boolean complete=false;try{try(InputStream in=new FileInputStream(source);OutputStream out=context.getContentResolver().openOutputStream(destination,"w")){if(out==null)throw new IOException("Provider folder is not writable.");byte[] buffer=new byte[8192];int n;while((n=in.read(buffer))!=-1)out.write(buffer,0,n);out.flush();}byte[] local,readback;try(InputStream in=new FileInputStream(source)){local=read(in);}try(InputStream in=context.getContentResolver().openInputStream(destination)){readback=read(in);}if(!java.security.MessageDigest.isEqual(local,readback))throw new IOException("Provider copy did not match the verified local backup.");complete=true;}finally{if(!complete)try{DocumentsContract.deleteDocument(context.getContentResolver(),destination);}catch(Exception ignored){/* local recovery copy remains safe */}}}
+    private BackupFiles(){}
+}
