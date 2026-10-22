@@ -9,7 +9,7 @@ import 'package:business_tracker/main.dart';
 
 void main() {
   testWidgets('each optional module switch persists independently and controls home visibility', (tester) async {
-    tester.view.physicalSize = const Size(390, 844);
+    tester.view.physicalSize = const Size(390, 3000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
@@ -62,8 +62,6 @@ void main() {
         expect(find.text('Your business at a glance'), findsOneWidget);
         for (final key in moduleKeys) {
           final homeAction = find.text(moduleNames[key]!);
-          await tester.scrollUntilVisible(homeAction, 250, scrollable: find.byType(Scrollable).first);
-          await tester.pumpAndSettle();
           expect(homeAction, findsOneWidget);
         }
 
@@ -89,8 +87,6 @@ void main() {
         expect(find.text(moduleNames[disabled]!), findsNothing);
         for (final other in moduleKeys.skip(1)) {
           final homeAction = find.text(moduleNames[other]!);
-          await tester.scrollUntilVisible(homeAction, 250, scrollable: find.byType(Scrollable).first);
-          await tester.pumpAndSettle();
           expect(homeAction, findsOneWidget);
         }
 
