@@ -473,7 +473,65 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
   Future<void> backupSettings(BuildContext c) async {final p=await password(c,'Enable scheduled encrypted backups');if(p==null || !c.mounted)return;String frequency='daily';await showDialog<void>(context:c,builder:(d)=>StatefulBuilder(builder:(d,update)=>AlertDialog(title:const Text('Backup schedule'),content:Column(mainAxisSize:MainAxisSize.min,children:[DropdownButton<String>(value:frequency,items:const [DropdownMenuItem(value:'daily',child:Text('Daily')),DropdownMenuItem(value:'weekly',child:Text('Weekly'))],onChanged:(v)=>update(()=>frequency=v!)),const Text('Keeps seven verified encrypted copies inside this app. Also export off-device. Background timing is controlled by the phone.')]),actions:[TextButton(onPressed:()=>perform(c,()async{await Workmanager().cancelByUniqueName('au.monster.tracker.plus.backup');await secrets.delete(key:'backup-password');await secrets.delete(key:'backup-frequency');if(d.mounted)Navigator.pop(d);}),child:const Text('Disable schedule')),FilledButton(onPressed:()=>perform(c,()async{Backups.password(p);await Backups.recovery(s,p);await secrets.write(key:'backup-password',value:p);await secrets.write(key:'backup-frequency',value:frequency);await secrets.write(key:'backup-last',value:'${DateTime.now().millisecondsSinceEpoch}');await Workmanager().registerPeriodicTask('au.monster.tracker.plus.backup','au.monster.tracker.plus.backup',frequency:Duration(days:frequency=='weekly'?7:1));if(d.mounted)Navigator.pop(d);}),child:const Text('Verify backup & enable'))])));}
   Future<void> recoveryCopies(BuildContext c) async {final files=await Backups.recoveryFiles();if(!c.mounted)return;await showDialog<void>(context:c,builder:(d)=>AlertDialog(title:const Text('Local recovery copies'),content:SizedBox(width:400,child:ListView(shrinkWrap:true,children:[if(files.isEmpty)const Text('No local recovery copies yet.'),for(final f in files)ListTile(title:Text(f.uri.pathSegments.last),subtitle:const Text('Export, then restore through Import backup'),onTap:()=>perform(c,()async{await Backups.export(f.uri.pathSegments.last,await f.readAsBytes());},message:'Recovery export finished.'))])),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Close'))]));}
   Future<void> legacyDocuments(BuildContext c) async {final b=obj(s['legacy']?['business'] ?? {});await showDialog<void>(context:c,builder:(d)=>AlertDialog(title:const Text('Original supplier records & audit'),content:SizedBox(width:450,child:ListView(shrinkWrap:true,children:[for(final doc in objects(b['documents'] ?? []))ListTile(title:Text('${doc['kind']} · ${doc['supplier']}'),subtitle:Text('${displayDate(doc['date'])}\n${money(doc['amount'])} · ${doc['reference']}\n${doc['note']}'),onTap:()async{final receipt=objects(b['receipts'] ?? []).where((r)=>r['hash']==doc['receiptHash']).firstOrNull;if(receipt!=null)await perform(c,()async{await Backups.export('supplier-${receipt['hash']}.${receipt['mime']=='application/pdf'?'pdf':receipt['mime']=='image/png'?'png':'jpg'}',base64Decode(receipt['content']));},message:'Original supplier receipt exported.');}),text('Original documents are retained without adding stock again. Receive new goods through Products → Receive / restock.'),SelectableText(canonical({'deliveries':b['deliveries'] ?? [],'cancellations':b['cancellations'] ?? [],'audit':b['audit'] ?? [],'refunds':b['refunds'] ?? {}}))])),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Close'))]));}
-  Future<void> scan(BuildContext c) async {final code=await Navigator.push<String>(c,MaterialPageRoute(builder:(_)=>const Scanner()));if(code==null || !c.mounted)return;final aliases=objects(s['legacy']?['business']?['catalog']?['barcodes'] ?? []);final alias=aliases.where((a)=>a['code']==code).firstOrNull;final p=objects(s['products']).where((p)=>p['barcode']==code).firstOrNull ?? objects(s['products']).where((p)=>p['id']==alias?['productId']).firstOrNull;if(p==null){ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text('No product mapped to $code. Add it in product settings.')));}else if(p['archived']==true){ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content:Text('This product is archived. Restore it from Archived products first.')));}else{await product(c,p);}}
+  Future<void> scan(BuildContext c) async {
+    final code=await Navigator.push<String>(c,MaterialPageRoute(builder:(_)=>const Scanner()));
+    if(code==null || !c.mounted)return;
+    final matches=<Map<String,dynamic>>[];
+    for(final p in objects(s['products'])){
+      if(p['barcode']==code)matches.add({'product':p,'kind':'single','packSize':1});
+      for(final item in objects(p['packBarcodes']??const <dynamic>[])){
+        if(item['code']==code)matches.add({'product':p,'kind':'pack','packSize':item['packSize']});
+      }
+    }
+    final aliases=objects(s['legacy']?['business']?['catalog']?['barcodes'] ?? []);
+    final alias=aliases.where((a)=>a['code']==code).firstOrNull;
+    if(matches.isEmpty && alias!=null){
+      final p=objects(s['products']).where((p)=>p['id']==alias['productId']).firstOrNull;
+      if(p!=null)matches.add({'product':p,'kind':'single','packSize':1});
+    }
+    if(matches.isEmpty){
+      await showDialog<void>(context:c,builder:(d)=>AlertDialog(
+        title:const Text('Barcode not recognised'),
+        content:Text('No product is registered for barcode $code. Open Products to add a product or register this barcode.'),
+        actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Close')),FilledButton(onPressed:(){Navigator.pop(d);setState(()=>tab=1);},child:const Text('Open products'))],
+      ));
+      return;
+    }
+    if(matches.length>1){
+      await showDialog<void>(context:c,builder:(d)=>AlertDialog(
+        title:const Text('Barcode is ambiguous'),
+        content:Text('Barcode $code matches more than one product or pack. Remove duplicate barcode registrations before continuing.'),
+        actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Close'))],
+      ));
+      return;
+    }
+    final match=matches.single;
+    final p=match['product'] as Obj;
+    if(p['archived']==true){
+      await showDialog<void>(context:c,builder:(d)=>AlertDialog(
+        title:const Text('Archived product'),
+        content:Text('${productLabel(p)} is archived. Restore it before using this barcode.'),
+        actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel')),FilledButton(onPressed:(){Navigator.pop(d);product(c,p);},child:const Text('Open product'))],
+      ));
+      return;
+    }
+    final isPack=match['kind']=='pack';
+    final packSize=match['packSize'] is int ? match['packSize'] as int : int.tryParse('${match['packSize']}')??1;
+    final confirmed=await showDialog<bool>(context:c,builder:(d)=>AlertDialog(
+      title:const Text('Confirm scanned product'),
+      content:Column(mainAxisSize:MainAxisSize.min,crossAxisAlignment:CrossAxisAlignment.start,children:[
+        Text(productLabel(p),style:Theme.of(d).textTheme.titleMedium),
+        const SizedBox(height:8),
+        Text(isPack?'Registered restock pack · $packSize units per pack':'Single-unit product barcode'),
+        const SizedBox(height:8),
+        Text('Barcode: $code'),
+        const SizedBox(height:12),
+        const Text('Is this the correct product? No stock or money will change until you choose and confirm an action.'),
+      ]),
+      actions:[TextButton(onPressed:()=>Navigator.pop(d,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(d,true),child:const Text('Confirm product'))],
+    ));
+    if(confirmed==true && c.mounted)await product(c,p);
+  }
 }
 class Scanner extends StatefulWidget {const Scanner({super.key});@override State<Scanner> createState()=>_ScannerState();}
 class _ScannerState extends State<Scanner> {bool done=false;@override Widget build(BuildContext context)=>Scaffold(appBar:AppBar(title:const Text('Scan product barcode')),body:MobileScanner(onDetect:(capture){for(final b in capture.barcodes){if(!done && b.rawValue!=null){done=true;Navigator.pop(context,b.rawValue);break;}}}));}
