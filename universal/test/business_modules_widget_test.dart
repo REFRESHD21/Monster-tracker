@@ -62,7 +62,7 @@ void main() {
         expect(find.text('Your business at a glance'), findsOneWidget);
         for (final key in moduleKeys) {
           final homeAction = find.text(moduleNames[key]!);
-          await tester.scrollUntilVisible(homeAction, 250, scrollable: find.byType(ListView).first);
+          await tester.scrollUntilVisible(homeAction, 250, scrollable: find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable)).first);
           await tester.pumpAndSettle();
           expect(homeAction, findsOneWidget);
         }
@@ -89,7 +89,7 @@ void main() {
         expect(find.text(moduleNames[disabled]!), findsNothing);
         for (final other in moduleKeys.skip(1)) {
           final homeAction = find.text(moduleNames[other]!);
-          await tester.scrollUntilVisible(homeAction, 250, scrollable: find.byType(ListView).first);
+          await tester.scrollUntilVisible(homeAction, 250, scrollable: find.descendant(of: find.byType(ListView).first, matching: find.byType(Scrollable)).first);
           await tester.pumpAndSettle();
           expect(homeAction, findsOneWidget);
         }
