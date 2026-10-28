@@ -59,7 +59,7 @@ class _BusinessModuleScreenState extends State<BusinessModuleScreen> {
     ));
     if (accepted == true && name.text.trim().isNotEmpty) {
       final next=clone(state);
-      objects(next['customers']).add({'id':const Uuid().v4(),'name':name.text.trim(),'phone':phone.text.trim().isEmpty?null:phone.text.trim(),'createdAt':DateTime.now().millisecondsSinceEpoch});
+      (next['customers'] as List).add({'id':const Uuid().v4(),'name':name.text.trim(),'phone':phone.text.trim().isEmpty?null:phone.text.trim(),'createdAt':DateTime.now().millisecondsSinceEpoch});
       await save(next,'Customer saved.');
     }
     name.dispose();phone.dispose();
