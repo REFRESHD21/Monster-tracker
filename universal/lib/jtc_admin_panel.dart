@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 const _jtcUrl = 'https://jmuxmgsbmnyqmetakhua.supabase.co';
 const _jtcKey = 'sb_publishable_9tqPZDnWGBjvFOqtuKQmYQ_kXjMfeUa';
+bool _jtcInitialized = false;
 
 class JtcAdminPanel extends StatefulWidget {
   const JtcAdminPanel({super.key});
@@ -22,8 +23,9 @@ class _JtcAdminPanelState extends State<JtcAdminPanel> {
 
   Future<void> connect() async {
     try {
-      if (!Supabase.instance.isInitialized) {
+      if (!_jtcInitialized) {
         await Supabase.initialize(url: _jtcUrl, publishableKey: _jtcKey);
+        _jtcInitialized = true;
       }
       db = Supabase.instance.client;
       if (db!.auth.currentUser == null) { if (mounted) setState(() => loading = false); return; }
