@@ -47,6 +47,10 @@ jobs:
           sed -i 's/versionCode = flutter.versionCode/versionCode = 20/' android/app/build.gradle.kts
           sed -i 's/versionName = flutter.versionName/versionName = "2.3.3"/' android/app/build.gradle.kts
           sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 26/' android/app/build.gradle.kts
+          # The preserved native ledger uses Java records and requires Java 17.
+          sed -i 's/JavaVersion.VERSION_11/JavaVersion.VERSION_17/g' android/app/build.gradle.kts
+          sed -i 's/jvmTarget = "11"/jvmTarget = "17"/g' android/app/build.gradle.kts
+          grep -q 'JavaVersion.VERSION_17' android/app/build.gradle.kts
           grep -q 'applicationId = "au.monster.tracker.plus"' android/app/build.gradle.kts
           grep -q 'versionCode = 20' android/app/build.gradle.kts
           grep -q 'versionName = "2.3.3"' android/app/build.gradle.kts
