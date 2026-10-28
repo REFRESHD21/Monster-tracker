@@ -6,6 +6,8 @@ on:
     branches: [main]
     paths:
       - 'universal/**'
+      - 'app/src/main/java/**'
+      - 'app/src/main/assets/**'
       - '.github/workflows/jtc-admin-check.yml'
   workflow_dispatch:
 permissions:
@@ -29,7 +31,7 @@ jobs:
       - name: Unit tests
         working-directory: universal
         run: flutter test
-      - name: Generate missing Android Gradle scaffolding without replacing app identity
+      - name: Generate Android build files and preserve Business Tracker identity
         working-directory: universal
         shell: bash
         run: |
@@ -40,14 +42,43 @@ jobs:
           cp -Rn "$scaffold/tracker/android/." android/
           test -f android/app/src/main/java/au/monster/tracker/MainActivity.java
           grep -q 'android:name="au.monster.tracker.MainActivity"' android/app/src/main/AndroidManifest.xml
-          grep -q 'applicationId = "au.monster.tracker"' android/app/build.gradle.kts
-          # The existing backup_destination plugin requires API 26. This is an explicit
-          # compatibility floor, not an override of the existing package/application ID.
+          # Preserve the existing installed Android application ID and version.
+          sed -i 's/applicationId = "au.monster.tracker"/applicationId = "au.monster.tracker.plus"/' android/app/build.gradle.kts
+          sed -i 's/versionCode = flutter.versionCode/versionCode = 20/' android/app/build.gradle.kts
+          sed -i 's/versionName = flutter.versionName/versionName = "2.3.3"/' android/app/build.gradle.kts
           sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 26/' android/app/build.gradle.kts
+          grep -q 'applicationId = "au.monster.tracker.plus"' android/app/build.gradle.kts
+          grep -q 'versionCode = 20' android/app/build.gradle.kts
+          grep -q 'versionName = "2.3.3"' android/app/build.gradle.kts
           grep -q 'minSdk = 26' android/app/build.gradle.kts
+          # Flutter's migration bridge calls the existing native SQLite/backup code.
+          mkdir -p android/app/src/main/java/au/monster/tracker android/app/src/main/assets
+          find ../app/src/main/java/au/monster/tracker -maxdepth 1 -name '*.java' ! -name 'MainActivity.java' -exec cp {} android/app/src/main/java/au/monster/tracker/ \;
+          cp ../app/src/main/assets/*.sql android/app/src/main/assets/
+          # Keep the custom Flutter MainActivity, but include its Google authorization
+          # and the native receipt OCR/barcode dependencies used by the existing code.
+          cat >> android/app/build.gradle.kts <<'GRADLE'
+
+          dependencies {
+              implementation("com.google.android.gms:play-services-auth:21.3.0")
+              implementation("com.google.mlkit:text-recognition:16.0.1")
+              implementation("com.google.mlkit:barcode-scanning:17.3.0")
+              implementation("androidx.exifinterface:exifinterface:1.3.7")
+              implementation("com.stripe:stripeterminal-taptopay:6.0.0")
+              implementation("com.stripe:stripeterminal-core:6.0.0")
+          }
+          GRADLE
       - name: Build debug APK
         working-directory: universal
         run: flutter build apk --debug
+      - name: Verify APK package and version
+        working-directory: universal
+        shell: bash
+        run: |
+          set -euo pipefail
+          APK=build/app/outputs/flutter-apk/app-debug.apk
+          test -s "$APK"
+          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)/aapt" dump badging "$APK" | grep -F "package: name='au.monster.tracker.plus' versionCode='20' versionName='2.3.3'"
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
