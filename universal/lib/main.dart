@@ -54,7 +54,7 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
   @override void didChangeAppLifecycleState(AppLifecycleState state){if(state==AppLifecycleState.resumed)automatic();}
   Future<void> automatic() async {if(busy || syncing)return;syncing=true;try {try{await Sheets.initializeConnection();if(await secrets.read(key:'sheets-auto')=='true')await Sheets.upload(s);}catch(_){}await refreshSyncStatus();final p=await secrets.read(key:'backup-password'),every=await secrets.read(key:'backup-frequency'),last=int.tryParse(await secrets.read(key:'backup-last') ?? '0') ?? 0;if(p!=null && every!=null && DateTime.now().millisecondsSinceEpoch-last>(every=='weekly'?7:1)*86400000){await Backups.recovery(s,p);await secrets.write(key:'backup-last',value:'${DateTime.now().millisecondsSinceEpoch}');}}catch(_){}finally{syncing=false;} }
   Future<void> perform(BuildContext c,Future<void> Function() fn,{String message='Saved. Historical records retained.'}) async {
-    if(busy)return;setState(()=>busy=true);
+    if(busy){if(c.mounted)ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content:Text('Another save is still in progress. Wait a moment and try again.')));return;}setState(()=>busy=true);
     try {await fn();if(mounted){setState((){});ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text(message)));}}
     catch(e){if(c.mounted)await showDialog<void>(context:c,builder:(c)=>AlertDialog(title:const Text('Action incomplete · local records retained'),content:Text('$e'),actions:[TextButton(onPressed:()=>Navigator.pop(c),child:const Text('Close'))]));}
     finally {if(mounted){setState(()=>busy=false);unawaited(automatic());}}
