@@ -15,8 +15,28 @@ permissions:
 jobs:
   flutter:
     runs-on: ubuntu-latest
+    env:
+      MONSTER_DEBUG_KEYSTORE: ${{ github.workspace }}/.signing/monster-plus-debug.keystore
     steps:
       - uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Reuse existing Android signing key
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.MONSTER_DEBUG_KEYSTORE }}
+          key: monster-plus-debug-signing-key-v1
+      - name: Ensure shared signing key exists
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$(dirname "$MONSTER_DEBUG_KEYSTORE")"
+          if [[ ! -f "$MONSTER_DEBUG_KEYSTORE" ]]; then
+            keytool -genkeypair -keystore "$MONSTER_DEBUG_KEYSTORE" -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          fi
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: '3.35.7'
@@ -72,6 +92,32 @@ jobs:
               implementation("com.stripe:stripeterminal-core:6.0.0")
           }
           GRADLE
+          # Use the same persistent debug signing key as the existing Android workflow.
+          cat >> android/app/build.gradle.kts <<'GRADLE'
+
+          android {
+              signingConfigs {
+                  create("sharedDebug") {
+                      storeFile = file(System.getenv("MONSTER_DEBUG_KEYSTORE"))
+                      storePassword = "android"
+                      keyAlias = "androiddebugkey"
+                      keyPassword = "android"
+                  }
+              }
+              buildTypes {
+                  getByName("debug") {
+                      signingConfig = signingConfigs.getByName("sharedDebug")
+                  }
+              }
+          }
+          GRADLE
+      - name: Download existing signed APK baseline
+        uses: actions/download-artifact@v4
+        with:
+          name: monster-tracker-apk
+          run-id: 38409682236
+          github-token: ${{ github.token }}
+          path: upgrade-baseline
       - name: Build debug APK
         working-directory: universal
         run: flutter build apk --debug
@@ -82,7 +128,46 @@ jobs:
           set -euo pipefail
           APK=build/app/outputs/flutter-apk/app-debug.apk
           test -s "$APK"
-          "$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)/aapt" dump badging "$APK" | grep -F "package: name='au.monster.tracker.plus' versionCode='20' versionName='2.3.3'"
+          BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)"
+          "$BT/aapt" dump badging "$APK" | grep -F "package: name='au.monster.tracker.plus' versionCode='20' versionName='2.3.3'"
+          baseline="$(find upgrade-baseline -name '*.apk' -type f | head -n 1)"
+          test -n "$baseline"
+          baseline_cert="$("$BT/apksigner" verify --print-certs "$baseline" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1)"
+          current_cert="$("$BT/apksigner" verify --print-certs "$APK" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1)"
+          test -n "$baseline_cert" && test -n "$current_cert"
+          if [[ "$baseline_cert" != "$current_cert" ]]; then
+            echo "Signing certificate mismatch: this APK cannot update the verified existing installation." >&2
+            echo "Baseline: $baseline_cert" >&2
+            echo "Current:  $current_cert" >&2
+            exit 1
+          fi
+          echo "APK package, version, signature presence and compatibility with the verified baseline passed."
+      - name: Test existing-install upgrade and startup on Android emulator
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          disable-animations: true
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: |
+            set -euo pipefail
+            baseline="$(find upgrade-baseline -name '*.apk' -type f | head -n 1)"
+            test -n "$baseline"
+            adb install "$baseline"
+            adb shell am start -W -n au.monster.tracker.plus/au.monster.tracker.MainActivity
+            sleep 3
+            adb shell am force-stop au.monster.tracker.plus
+            adb install -r universal/build/app/outputs/flutter-apk/app-debug.apk
+            adb logcat -c
+            adb shell am start -W -n au.monster.tracker.plus/au.monster.tracker.MainActivity
+            sleep 8
+            adb shell pidof au.monster.tracker.plus
+            adb shell run-as au.monster.tracker.plus test -s databases/business-tracker-v1.db
+            if adb logcat -d | grep -E 'FATAL EXCEPTION|MIGRATION_BLOCKED'; then
+              echo "App crash or migration blocker detected during emulator smoke test." >&2
+              exit 1
+            fi
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
