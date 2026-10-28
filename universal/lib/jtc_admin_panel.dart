@@ -34,7 +34,7 @@ class _JtcAdminPanelState extends State<JtcAdminPanel> {
   Future<void> connect() async {
     try {
       if (!_jtcInitialized) {
-        await Supabase.initialize(url: _jtcUrl, publishableKey: _jtcKey, authOptions: FlutterAuthClientOptions(localStorage: _JtcSecureAuthStorage()));
+        await Supabase.initialize(url: _jtcUrl, anonKey: _jtcKey, authOptions: FlutterAuthClientOptions(localStorage: _JtcSecureAuthStorage()));
         _jtcInitialized = true;
       }
       db = Supabase.instance.client;
@@ -109,7 +109,7 @@ class _JtcAdminPanelState extends State<JtcAdminPanel> {
         SwitchListTile(value: published, onChanged: (v) => refresh(() => published = v), title: const Text('Publish on website'), contentPadding: EdgeInsets.zero),
       ])))),
       actions: [TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')), FilledButton(onPressed: () { if (key.currentState!.validate()) Navigator.pop(d, true); }, child: const Text('Save'))],
-    ));
+    )));
     if (ok == true) {
       final data = <String,dynamic>{'name':name.text.trim(),'description':desc.text.trim(),'price':double.parse(price.text),'stock_on_hand':int.parse(stock.text),'image_url':image.text.trim().isEmpty ? null : image.text.trim(),'bundle_offer':offer.text.trim().isEmpty ? null : offer.text.trim(),'is_published':published,'updated_at':DateTime.now().toUtc().toIso8601String()};
       await runAction(() async { if (p == null) { await db!.from('products').insert(data); } else { await db!.from('products').update(data).eq('id', p['id']); } }, 'Product saved.');
