@@ -1,9 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 const _jtcUrl = 'https://jmuxmgsbmnyqmetakhua.supabase.co';
 const _jtcKey = 'sb_publishable_9tqPZDnWGBjvFOqtuKQmYQ_kXjMfeUa';
 bool _jtcInitialized = false;
+
+class _JtcSecureAuthStorage extends AuthAsyncStorage {
+  final FlutterSecureStorage storage = const FlutterSecureStorage();
+  @override Future<String?> getItem(String key) => storage.read(key: key);
+  @override Future<void> setItem(String key, String value) => storage.write(key: key, value: value);
+  @override Future<void> removeItem(String key) => storage.delete(key: key);
+}
 
 class JtcAdminPanel extends StatefulWidget {
   const JtcAdminPanel({super.key});
@@ -24,7 +32,7 @@ class _JtcAdminPanelState extends State<JtcAdminPanel> {
   Future<void> connect() async {
     try {
       if (!_jtcInitialized) {
-        await Supabase.initialize(url: _jtcUrl, publishableKey: _jtcKey);
+        await Supabase.initialize(url: _jtcUrl, publishableKey: _jtcKey, authOptions: FlutterAuthClientOptions(asyncStorage: _JtcSecureAuthStorage()));
         _jtcInitialized = true;
       }
       db = Supabase.instance.client;
