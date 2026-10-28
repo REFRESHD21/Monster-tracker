@@ -41,6 +41,17 @@ jobs:
           test -f android/app/src/main/java/au/monster/tracker/MainActivity.java
           grep -q 'android:name="au.monster.tracker.MainActivity"' android/app/src/main/AndroidManifest.xml
           grep -q 'applicationId = "au.monster.tracker"' android/app/build.gradle.kts
+          # The existing backup_destination plugin requires API 26. This is an explicit
+          # compatibility floor, not an override of the existing package/application ID.
+          sed -i 's/minSdk = flutter.minSdkVersion/minSdk = 26/' android/app/build.gradle.kts
+          grep -q 'minSdk = 26' android/app/build.gradle.kts
       - name: Build debug APK
         working-directory: universal
         run: flutter build apk --debug
+      - name: Upload debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: business-tracker-2.3.3-debug-apk
+          path: universal/build/app/outputs/flutter-apk/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
