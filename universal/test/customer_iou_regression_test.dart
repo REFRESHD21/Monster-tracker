@@ -7,6 +7,10 @@ import 'package:business_tracker/business_module_screen.dart';
 
 void main() {
   testWidgets('adding an IOU customer persists it in the business state', (tester) async {
+    tester.view.physicalSize = const Size(420, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
     final initial = emptyState();
     Obj? persisted;
     await tester.pumpWidget(MaterialApp(
