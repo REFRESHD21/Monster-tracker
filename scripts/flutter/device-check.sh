@@ -66,7 +66,12 @@ drive_checked() {
       echo "Emulator did not reconnect after the ADB reset." >&2
       return "$status"
     fi
-    if ! timeout 30s adb shell getprop sys.boot_completed | grep -q '^1
+    if ! timeout 30s adb shell getprop sys.boot_completed | grep -q '^1$'; then
+      echo "Emulator did not finish booting after the ADB reset." >&2
+      return "$status"
+    fi
+  done
+}
 adb install ../baseline-debug/app-debug.apk
 adb shell am start -W -n au.monster.tracker.plus/au.monster.tracker.MainActivity
 wait_for_ui 'CANS REMAINING' baseline
