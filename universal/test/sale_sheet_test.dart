@@ -65,4 +65,31 @@ void main(){
     ]);
     expect(saved!['standaloneAllocations'],[{'productId':'individual-c-001','quantity':2}]);
   });
+
+  testWidgets('IOU adds customer, awaits persistence, and saves the sale against that customer',(t)async{
+    final persistedCustomers=<Obj>[];
+    Obj? saved;
+    t.view.physicalSize=const Size(420,900);t.view.devicePixelRatio=1;
+    addTearDown(t.view.resetPhysicalSize);addTearDown(t.view.resetDevicePixelRatio);
+    await t.pumpWidget(MaterialApp(home:Scaffold(body:Builder(builder:(c)=>TextButton(
+      onPressed:()=>showModalBottomSheet<bool>(context:c,isScrollControlled:true,builder:(_)=>SaleSheet(
+        product:product(),stock:20,payment:'cash',allowIou:true,
+        onAddCustomer:(customer)async{persistedCustomers.add(clone(customer));},
+        onSave:(event,receipt)async{saved=event;},
+        pickReceipt:()async=>null,
+      )),
+      child:const Text('Open IOU'),
+    )))));
+    await t.tap(find.text('Open IOU'));await t.pumpAndSettle();
+    await t.tap(find.text('IOU'));await t.pumpAndSettle();
+    await t.tap(find.text('Add customer'));await t.pumpAndSettle();
+    await t.enterText(find.byType(TextField).at(0),'Test customer');
+    await t.tap(find.text('Save customer'));await t.pumpAndSettle();
+    expect(persistedCustomers,hasLength(1));
+    expect(find.text('Test customer'),findsOneWidget);
+    await t.tap(find.byKey(const ValueKey('confirm-sale')));await t.pumpAndSettle();
+    expect(saved, isNotNull);
+    expect(saved!['payment'],'iou');
+    expect(saved!['customerId'],persistedCustomers.single['id']);
+  });
 }
