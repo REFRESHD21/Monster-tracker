@@ -48,21 +48,20 @@ class _BusinessModuleScreenState extends State<BusinessModuleScreen> {
   }
 
   Future<void> addCustomer() async {
-    final name = TextEditingController(), phone = TextEditingController();
-    final accepted = await showDialog<bool>(context:context,builder:(c)=>AlertDialog(
-      title:const Text('Add customer'),
-      content:Column(mainAxisSize:MainAxisSize.min,children:[
-        TextField(controller:name,decoration:const InputDecoration(labelText:'Name or nickname')),
-        TextField(controller:phone,decoration:const InputDecoration(labelText:'Optional contact')),
-      ]),
-      actions:[TextButton(onPressed:()=>Navigator.pop(c,false),child:const Text('Cancel')),FilledButton(onPressed:()=>Navigator.pop(c,true),child:const Text('Save'))],
-    ));
-    if (accepted == true && name.text.trim().isNotEmpty) {
+    final customer = await showDialog<Obj>(
+      context:context,
+      builder:(_) => const _AddCustomerDialog(),
+    );
+    if (customer != null && (customer['name'] as String).trim().isNotEmpty) {
       final next=clone(state);
-      (next['customers'] as List).add({'id':const Uuid().v4(),'name':name.text.trim(),'phone':phone.text.trim().isEmpty?null:phone.text.trim(),'createdAt':DateTime.now().millisecondsSinceEpoch});
+      (next['customers'] as List).add({
+        'id':const Uuid().v4(),
+        'name':(customer['name'] as String).trim(),
+        'phone':(customer['phone'] as String).trim().isEmpty?null:(customer['phone'] as String).trim(),
+        'createdAt':DateTime.now().millisecondsSinceEpoch,
+      });
       await save(next,'Customer saved.');
     }
-    name.dispose();phone.dispose();
   }
 
   Future<void> recordPayment(Obj customer, int balance) async {
@@ -217,4 +216,40 @@ class _BusinessModuleScreenState extends State<BusinessModuleScreen> {
       body:SafeArea(child:ListView(padding:const EdgeInsets.all(16),children:children)),
     );
   }
+
+class _AddCustomerDialog extends StatefulWidget {
+  const _AddCustomerDialog();
+
+  @override
+  State<_AddCustomerDialog> createState() => _AddCustomerDialogState();
+}
+
+class _AddCustomerDialogState extends State<_AddCustomerDialog> {
+  final name = TextEditingController();
+  final phone = TextEditingController();
+
+  @override
+  void dispose() {
+    name.dispose();
+    phone.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => AlertDialog(
+    title: const Text('Add customer'),
+    content: Column(mainAxisSize:MainAxisSize.min,children:[
+      TextField(controller:name,decoration:const InputDecoration(labelText:'Name or nickname')),
+      TextField(controller:phone,decoration:const InputDecoration(labelText:'Optional contact')),
+    ]),
+    actions:[
+      TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Cancel')),
+      FilledButton(onPressed:()=>Navigator.pop<Obj>(context,{
+        'name':name.text.trim(),
+        'phone':phone.text.trim(),
+      }),child:const Text('Save')),
+    ],
+  );
+}
+
 }
