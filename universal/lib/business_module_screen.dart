@@ -132,7 +132,7 @@ class _BusinessModuleScreenState extends State<BusinessModuleScreen> {
           final balance=balances[customer['id']]??0;
           final payments=customerPaymentRecords(state).where((p)=>p['customerId']==customer['id']).fold<int>(0,(sum,p)=>sum+(p['amount'] as int));
           final sales=objects(state['events']).where((e)=>e['payment']=='iou'&&e['customerId']==customer['id']).toList();
-          return Card(child:ListTile(title:Text(customer['name'] as String),subtitle:Text('${sales.length} IOU sales · ${payments==0?'no payments recorded':'payments received ${money(payments)}'}${customer['phone']==null?'':'\n${customer['phone']}'}'),trailing:Column(mainAxisAlignment:MainAxisAlignment.center,children:[Text(balance<0?'Credit ${money(-balance)}':'Owes ${money(balance)}'),TextButton(onPressed:()=>recordPayment(customer,balance),child:const Text('Record payment'))])));
+          return Card(child:ListTile(title:Text(customer['name'] as String),subtitle:Text('${sales.length} IOU sales · ${payments==0?'no payments recorded':'payments received ${money(payments)}'}\n${balance<0?'Credit ${money(-balance)}':'Owes ${money(balance)}'}${customer['phone']==null?'':'\n${customer['phone']}'}'),isThreeLine:true,trailing:TextButton(onPressed:()=>recordPayment(customer,balance),child:const Text('Record payment'))));
         }),
       ],
     ];
