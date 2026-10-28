@@ -6,11 +6,13 @@ const _jtcUrl = 'https://jmuxmgsbmnyqmetakhua.supabase.co';
 const _jtcKey = 'sb_publishable_9tqPZDnWGBjvFOqtuKQmYQ_kXjMfeUa';
 bool _jtcInitialized = false;
 
-class _JtcSecureAuthStorage extends AuthAsyncStorage {
+class _JtcSecureAuthStorage extends LocalStorage {
   final FlutterSecureStorage storage = const FlutterSecureStorage();
-  @override Future<String?> getItem(String key) => storage.read(key: key);
-  @override Future<void> setItem(String key, String value) => storage.write(key: key, value: value);
-  @override Future<void> removeItem(String key) => storage.delete(key: key);
+  @override Future<void> initialize() async {}
+  @override Future<String?> accessToken() => storage.read(key: supabasePersistSessionKey);
+  @override Future<bool> hasAccessToken() => storage.containsKey(key: supabasePersistSessionKey);
+  @override Future<void> persistSession(String persistSessionString) => storage.write(key: supabasePersistSessionKey, value: persistSessionString);
+  @override Future<void> removePersistedSession() => storage.delete(key: supabasePersistSessionKey);
 }
 
 class JtcAdminPanel extends StatefulWidget {
@@ -32,7 +34,7 @@ class _JtcAdminPanelState extends State<JtcAdminPanel> {
   Future<void> connect() async {
     try {
       if (!_jtcInitialized) {
-        await Supabase.initialize(url: _jtcUrl, publishableKey: _jtcKey, authOptions: FlutterAuthClientOptions(asyncStorage: _JtcSecureAuthStorage()));
+        await Supabase.initialize(url: _jtcUrl, publishableKey: _jtcKey, authOptions: FlutterAuthClientOptions(localStorage: _JtcSecureAuthStorage()));
         _jtcInitialized = true;
       }
       db = Supabase.instance.client;
