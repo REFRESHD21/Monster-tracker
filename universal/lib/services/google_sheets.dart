@@ -51,15 +51,6 @@ class GoogleSheets {
     }on SocketException{throw const FormatException('Offline. Changes are saved on this phone and will retry when connected.');}
     finally {client.close(force:true);}
   }
-  static Future<String> pick() async {
-    final email=await secrets.read(key:'sheets-email');
-    final id=await const MethodChannel('au.monster.tracker.plus/sheets-picker').invokeMethod<String>('pick',{'email':email,'clientId':iosClient});
-    if(id==null || !RegExp(r'^[A-Za-z0-9_-]+$').hasMatch(id))throw const FormatException('No spreadsheet selected.');
-    final account=signIn.currentUser ?? await signIn.signInSilently(suppressErrors:false);
-    if(account==null)throw const FormatException('Reconnect your Google account.');
-    await account.clearAuthCache();
-    return id;
-  }
   static Future<List<Obj>> available() async {
     final result=<Obj>[];String? page;
     do {
