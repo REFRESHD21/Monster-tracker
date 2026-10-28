@@ -1,0 +1,34 @@
+name: JTC Drinks admin checks
+on:
+  push:
+    branches: [feature/jtc-drinks-supabase-admin]
+  pull_request:
+    branches: [main]
+    paths:
+      - 'universal/**'
+      - '.github/workflows/jtc-admin-check.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.35.7'
+          channel: stable
+          cache: true
+      - name: Resolve dependencies
+        working-directory: universal
+        run: flutter pub get
+      - name: Analyze
+        working-directory: universal
+        run: flutter analyze --no-fatal-infos --no-fatal-warnings
+      - name: Unit tests
+        working-directory: universal
+        run: flutter test
+      - name: Build debug APK
+        working-directory: universal
+        run: flutter build apk --debug
