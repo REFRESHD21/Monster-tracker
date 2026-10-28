@@ -30,7 +30,7 @@ void main() {
           'name': 'Mango',
           'category': 'Drink',
           'variant': '',
-          'purchaseCost': 200,
+          'purchaseCost': null,
           'sellingPrice': 350,
           'minimum': 0,
           'barcode': '',
