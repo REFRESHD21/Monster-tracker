@@ -217,6 +217,8 @@ class _BusinessModuleScreenState extends State<BusinessModuleScreen> {
     );
   }
 
+}
+
 class _AddCustomerDialog extends StatefulWidget {
   const _AddCustomerDialog();
 
@@ -250,6 +252,4 @@ class _AddCustomerDialogState extends State<_AddCustomerDialog> {
       }),child:const Text('Save')),
     ],
   );
-}
-
 }
