@@ -12,9 +12,16 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+
+# Avoid running the same emulator upgrade test twice for a push and its PR.
+concurrency:
+  group: jtc-admin-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
 jobs:
   flutter:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
     env:
       MONSTER_DEBUG_KEYSTORE: ${{ github.workspace }}/.signing/monster-plus-debug.keystore
     steps:
@@ -72,8 +79,8 @@ jobs:
           sed -i 's/jvmTarget = "11"/jvmTarget = "17"/g' android/app/build.gradle.kts
           grep -q 'JavaVersion.VERSION_17' android/app/build.gradle.kts
           grep -q 'applicationId = "au.monster.tracker.plus"' android/app/build.gradle.kts
-          grep -q 'versionCode = 20' android/app/build.gradle.kts
-          grep -q 'versionName = "2.3.3"' android/app/build.gradle.kts
+          grep -q 'versionCode = 21' android/app/build.gradle.kts
+          grep -q 'versionName = "2.3.4"' android/app/build.gradle.kts
           grep -q 'minSdk = 26' android/app/build.gradle.kts
           # Flutter's migration bridge calls the existing native SQLite/backup code.
           mkdir -p android/app/src/main/java/au/monster/tracker android/app/src/main/assets
@@ -143,6 +150,7 @@ jobs:
           fi
           echo "APK package, version, signature presence and compatibility with the verified baseline passed."
       - name: Test existing-install upgrade and startup on Android emulator
+        timeout-minutes: 15
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -152,15 +160,28 @@ jobs:
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
             set -euo pipefail
+            echo 'Waiting up to 3 minutes for the Android device...'
+            timeout 180 adb wait-for-device
+            boot_deadline=$((SECONDS + 180))
+            until [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r')" == '1' ]]; do
+              if (( SECONDS >= boot_deadline )); then
+                echo 'Emulator did not finish booting within 3 minutes.' >&2
+                adb devices -l || true
+                adb logcat -d -t 200 || true
+                exit 1
+              fi
+              sleep 5
+            done
+            echo 'Emulator boot completed.'
             baseline="$(find upgrade-baseline -name '*.apk' -type f | head -n 1)"
             test -n "$baseline"
-            adb install "$baseline"
-            adb shell am start -W -n au.monster.tracker.plus/au.monster.tracker.MainActivity
+            timeout 120 adb install "$baseline"
+            timeout 60 adb shell am start -W -n au.monster.tracker.plus/au.monster.tracker.MainActivity
             sleep 3
-            adb shell am force-stop au.monster.tracker.plus
-            adb install -r universal/build/app/outputs/flutter-apk/app-debug.apk
+            timeout 30 adb shell am force-stop au.monster.tracker.plus
+            timeout 120 adb install -r universal/build/app/outputs/flutter-apk/app-debug.apk
             adb logcat -c
-            adb shell am start -W -n au.monster.tracker.plus/au.monster.tracker.MainActivity
+            timeout 60 adb shell am start -W -n au.monster.tracker.plus/au.monster.tracker.MainActivity
             sleep 8
             adb shell pidof au.monster.tracker.plus
             adb shell run-as au.monster.tracker.plus test -s databases/business-tracker-v1.db
