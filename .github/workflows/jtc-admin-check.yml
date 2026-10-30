@@ -15,7 +15,8 @@ permissions:
 
 # Avoid running the same emulator upgrade test twice for a push and its PR.
 concurrency:
-  group: jtc-admin-${{ github.event.pull_request.number || github.ref }}
+  # Push and pull_request events for the same branch share one group.
+  group: jtc-admin-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
 jobs:
@@ -162,9 +163,10 @@ jobs:
             set -eu
             echo 'Waiting up to 3 minutes for the Android device...'
             timeout 180 adb wait-for-device
-            boot_deadline=$((SECONDS + 180))
-            until [[ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r')" == '1' ]]; do
-              if (( SECONDS >= boot_deadline )); then
+            boot_deadline=$(($(date +%s) + 180))
+            while [ "$(adb shell getprop sys.boot_completed 2>/dev/null | tr -d '\\r')" != '1' ]; do
+              now=$(date +%s)
+              if [ "$now" -ge "$boot_deadline" ]; then
                 echo 'Emulator did not finish booting within 3 minutes.' >&2
                 adb devices -l || true
                 adb logcat -d -t 200 || true
