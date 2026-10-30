@@ -27,6 +27,7 @@ import 'services/sync.dart';
 import 'services/google_sheets.dart';
 import 'core/sheet_snapshot.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'jtc_admin_panel.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -64,10 +65,10 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
     return ThemeData(useMaterial3:true,colorScheme:ColorScheme.fromSeed(seedColor:seed,brightness:name=='dark'?Brightness.dark:Brightness.light),appBarTheme:const AppBarTheme(centerTitle:false),inputDecorationTheme:const InputDecorationTheme(border:OutlineInputBorder()),cardTheme:const CardThemeData(margin:EdgeInsets.symmetric(vertical:6),elevation:0));
   }
   @override Widget build(BuildContext context)=>MaterialApp(title:'Business Tracker',theme:theme(),home:Builder(builder:(c)=>Scaffold(
-    appBar:AppBar(title:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(s['businessName'],style:const TextStyle(fontSize:21,fontWeight:FontWeight.w700)),Text(['Overview','Products & stock','Transaction history','Profit reports','Business settings'][tab],style:Theme.of(c).textTheme.labelMedium)]),actions:[if(tab==1)IconButton(tooltip:'Add product',onPressed:busy?null:()=>editProduct(c),icon:const Icon(Icons.add)),IconButton(tooltip:'Scan barcode',onPressed:busy?null:()=>scan(c),icon:const Icon(Icons.qr_code_scanner))]),
-    body:SafeArea(child:Column(children:[if(busy)const LinearProgressIndicator(),Expanded(child:IgnorePointer(ignoring:busy,child:ListView(padding:const EdgeInsets.fromLTRB(20,12,20,100),children:switch(tab){0=>home(c),1=>products(c),2=>history(c),3=>reports(c),_=>settings(c)})))])),
-    floatingActionButton:FloatingActionButton.extended(key:const ValueKey('record-sale'),onPressed:busy?null:()=>recordSale(c),icon:const Icon(Icons.point_of_sale),label:const Text('Record sale')),
-    bottomNavigationBar:NavigationBar(selectedIndex:tab,onDestinationSelected:(i)=>setState(()=>tab=i),destinations:const [NavigationDestination(icon:Icon(Icons.space_dashboard_outlined),label:'Home'),NavigationDestination(icon:Icon(Icons.inventory_2_outlined),label:'Products'),NavigationDestination(icon:Icon(Icons.receipt_long_outlined),label:'History'),NavigationDestination(icon:Icon(Icons.bar_chart),label:'Reports'),NavigationDestination(icon:Icon(Icons.tune),label:'Settings')]),
+    appBar:AppBar(title:Column(crossAxisAlignment:CrossAxisAlignment.start,children:[Text(s['businessName'],style:const TextStyle(fontSize:21,fontWeight:FontWeight.w700)),Text(['Overview','Products & stock','Transaction history','Profit reports','Business settings','JTC Drinks Admin'][tab],style:Theme.of(c).textTheme.labelMedium)]),actions:[if(tab==1)IconButton(tooltip:'Add product',onPressed:busy?null:()=>editProduct(c),icon:const Icon(Icons.add)),IconButton(tooltip:'Scan barcode',onPressed:busy?null:()=>scan(c),icon:const Icon(Icons.qr_code_scanner))]),
+    body:SafeArea(child:Column(children:[if(busy)const LinearProgressIndicator(),Expanded(child:tab==5?const JtcAdminPanel():IgnorePointer(ignoring:busy,child:ListView(padding:const EdgeInsets.fromLTRB(20,12,20,100),children:switch(tab){0=>home(c),1=>products(c),2=>history(c),3=>reports(c),_=>settings(c)})))])),
+    floatingActionButton:tab==5?null:FloatingActionButton.extended(key:const ValueKey('record-sale'),onPressed:busy?null:()=>recordSale(c),icon:const Icon(Icons.point_of_sale),label:const Text('Record sale')),
+    bottomNavigationBar:NavigationBar(selectedIndex:tab,onDestinationSelected:(i)=>setState(()=>tab=i),destinations:const [NavigationDestination(icon:Icon(Icons.space_dashboard_outlined),label:'Home'),NavigationDestination(icon:Icon(Icons.inventory_2_outlined),label:'Products'),NavigationDestination(icon:Icon(Icons.receipt_long_outlined),label:'History'),NavigationDestination(icon:Icon(Icons.bar_chart),label:'Reports'),NavigationDestination(icon:Icon(Icons.tune),label:'Settings'),NavigationDestination(icon:Icon(Icons.admin_panel_settings_outlined),label:'JTC Admin')]),
   )));
   Widget title(String text)=>Padding(padding:const EdgeInsets.symmetric(vertical:12),child:Text(text,style:const TextStyle(fontSize:22,fontWeight:FontWeight.w700)));
   Widget text(String text)=>Padding(padding:const EdgeInsets.symmetric(vertical:8),child:Text(text));
@@ -457,11 +458,11 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
       files=await GoogleSheets.available();
     }),message:'Google account selected.');
     if(files==null || !c.mounted)return;
-    final choice=await showDialog<String>(context:c,builder:(d)=>AlertDialog(title:const Text('Choose spreadsheet'),content:SizedBox(width:440,child:ListView(shrinkWrap:true,children:[ListTile(leading:const Icon(Icons.add),title:const Text('Create a new spreadsheet'),onTap:()=>Navigator.pop(d,'new')),ListTile(leading:const Icon(Icons.folder_open),title:const Text('Choose an existing spreadsheet'),subtitle:const Text('Browse Google Drive with Google Picker'),onTap:()=>Navigator.pop(d,'pick')),const Text('Recently authorized spreadsheets'),for(final f in files!)ListTile(title:Text(f['name']),onTap:()=>Navigator.pop(d,f['id']))])),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel'))]));
+    final choice=await showDialog<String>(context:c,builder:(d)=>AlertDialog(title:const Text('Choose spreadsheet'),content:SizedBox(width:440,child:ListView(shrinkWrap:true,children:[ListTile(leading:const Icon(Icons.add),title:const Text('Create a new spreadsheet'),onTap:()=>Navigator.pop(d,'new')),const Text('Recently authorized spreadsheets'),for(final f in files!)ListTile(title:Text(f['name']),onTap:()=>Navigator.pop(d,f['id']))])),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel'))]));
     if(choice==null || !c.mounted)return;
     var selected=false;
     await perform(c,()=>Sheets.exclusive((_) async {
-      final id=choice=='new'?(await GoogleSheets.create('${s['businessName']} · Tracker reports'))['spreadsheetId'] as String:choice=='pick'?await GoogleSheets.pick():choice;
+      final id=choice=='new'?(await GoogleSheets.create('${s['businessName']} · Tracker reports'))['spreadsheetId'] as String:files!.any((f)=>f['id']==choice)?choice:throw const FormatException('Choose a spreadsheet from the list.');
       await GoogleSheets.select(id);selected=true;
       await refreshSyncStatus();
     }),message:'Spreadsheet connected.');
