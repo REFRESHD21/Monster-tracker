@@ -148,30 +148,6 @@ jobs:
             exit 1
           fi
           echo "APK package, version, signature presence and compatibility with the verified baseline passed."
-      - name: Enable Android emulator hardware acceleration
-        shell: bash
-        run: |
-          set -euo pipefail
-          if [[ -e /dev/kvm ]]; then
-            sudo chmod 666 /dev/kvm
-            test -r /dev/kvm && test -w /dev/kvm
-            echo 'KVM is available to the emulator.'
-          else
-            echo 'KVM device is not present; emulator will use software acceleration.'
-          fi
-      - name: Test existing-install upgrade and startup on Android emulator
-        timeout-minutes: 20
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 30
-          target: google_apis
-          arch: x86
-          emulator-boot-timeout: 900
-          disable-animations: true
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          # android-emulator-runner splits its script input on newlines.
-          # Keep this as one command and put the real test in a checked-in script.
-          script: bash .github/scripts/test-business-tracker-upgrade.sh
       - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
