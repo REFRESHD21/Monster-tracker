@@ -116,11 +116,11 @@ jobs:
               }
           }
           GRADLE
-      - name: Download existing signed APK baseline
+      - name: Download verified Business Tracker 2.3.3 baseline
         uses: actions/download-artifact@v4
         with:
-          name: monster-tracker-apk
-          run-id: 38409682236
+          name: verified-android-update
+          run-id: 39698253756
           github-token: ${{ github.token }}
           path: upgrade-baseline
       - name: Build debug APK
@@ -137,6 +137,7 @@ jobs:
           "$BT/aapt" dump badging "$APK" | grep -F "package: name='au.monster.tracker.plus' versionCode='21' versionName='2.3.4'"
           baseline="$(find ../upgrade-baseline -name '*.apk' -type f | head -n 1)"
           test -n "$baseline"
+          "$BT/aapt" dump badging "$baseline" | grep -F "package: name='au.monster.tracker.plus' versionCode='20' versionName='2.3.3'"
           baseline_cert="$("$BT/apksigner" verify --print-certs "$baseline" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1)"
           current_cert="$("$BT/apksigner" verify --print-certs "$APK" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1)"
           test -n "$baseline_cert" && test -n "$current_cert"
