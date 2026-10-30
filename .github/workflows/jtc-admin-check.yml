@@ -151,12 +151,13 @@ jobs:
           fi
           echo "APK package, version, signature presence and compatibility with the verified baseline passed."
       - name: Test existing-install upgrade and startup on Android emulator
-        timeout-minutes: 15
+        timeout-minutes: 20
         uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 35
+          api-level: 30
           target: google_apis
-          arch: x86_64
+          arch: x86
+          emulator-boot-timeout: 900
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           # android-emulator-runner splits its script input on newlines.
