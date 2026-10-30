@@ -458,7 +458,7 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
       files=await GoogleSheets.available();
     }),message:'Google account selected.');
     if(files==null || !c.mounted)return;
-    final choice=await showDialog<String>(context:c,builder:(d)=>AlertDialog(title:const Text('Choose spreadsheet'),content:SizedBox(width:440,child:ListView(shrinkWrap:true,children:[ListTile(leading:const Icon(Icons.add),title:const Text('Create a new spreadsheet'),onTap:()=>Navigator.pop(d,'new')),ListTile(leading:const Icon(Icons.folder_open),title:const Text('Choose an existing spreadsheet'),subtitle:const Text('Select from spreadsheets this app can access'),onTap:()=>Navigator.pop(d,'browse')),const Text('Recently authorized spreadsheets'),for(final f in files!)ListTile(title:Text(f['name']),onTap:()=>Navigator.pop(d,f['id']))])),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel'))]));
+    final choice=await showDialog<String>(context:c,builder:(d)=>AlertDialog(title:const Text('Choose spreadsheet'),content:SizedBox(width:440,child:ListView(shrinkWrap:true,children:[ListTile(leading:const Icon(Icons.add),title:const Text('Create a new spreadsheet'),onTap:()=>Navigator.pop(d,'new')),const Text('Recently authorized spreadsheets'),for(final f in files!)ListTile(title:Text(f['name']),onTap:()=>Navigator.pop(d,f['id']))])),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel'))]));
     if(choice==null || !c.mounted)return;
     var selected=false;
     await perform(c,()=>Sheets.exclusive((_) async {
