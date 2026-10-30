@@ -458,11 +458,11 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
       files=await GoogleSheets.available();
     }),message:'Google account selected.');
     if(files==null || !c.mounted)return;
-    final choice=await showDialog<String>(context:c,builder:(d)=>AlertDialog(title:const Text('Choose spreadsheet'),content:SizedBox(width:440,child:ListView(shrinkWrap:true,children:[ListTile(leading:const Icon(Icons.add),title:const Text('Create a new spreadsheet'),onTap:()=>Navigator.pop(d,'new')),const Text('Recently authorized spreadsheets'),for(final f in files!)ListTile(title:Text(f['name']),onTap:()=>Navigator.pop(d,f['id']))])),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel'))]));
+    final choice=await showDialog<String>(context:c,builder:(d)=>AlertDialog(title:const Text('Choose spreadsheet'),content:SizedBox(width:440,child:ListView(shrinkWrap:true,children:[ListTile(leading:const Icon(Icons.add),title:const Text('Create a new spreadsheet'),onTap:()=>Navigator.pop(d,'new')),ListTile(leading:const Icon(Icons.folder_open),title:const Text('Choose an existing spreadsheet'),subtitle:const Text('Browse Google Drive with Google Picker'),onTap:()=>Navigator.pop(d,'pick')),const Text('Recently authorized spreadsheets'),for(final f in files!)ListTile(title:Text(f['name']),onTap:()=>Navigator.pop(d,f['id']))])),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel'))]));
     if(choice==null || !c.mounted)return;
     var selected=false;
     await perform(c,()=>Sheets.exclusive((_) async {
-      final id=choice=='new'?(await GoogleSheets.create('${s['businessName']} · Tracker reports'))['spreadsheetId'] as String:choice;
+      final id=choice=='new'?(await GoogleSheets.create('${s['businessName']} · Tracker reports'))['spreadsheetId'] as String:choice=='pick'?await GoogleSheets.pick():choice;
       await GoogleSheets.select(id);selected=true;
       await refreshSyncStatus();
     }),message:'Spreadsheet connected.');
