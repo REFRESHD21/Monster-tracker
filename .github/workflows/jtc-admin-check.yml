@@ -66,7 +66,7 @@ jobs:
           scaffold="$(mktemp -d)"
           flutter create --platforms=android --org au.monster --project-name tracker --no-pub "$scaffold/tracker"
           rm -f "$scaffold/tracker/android/app/src/main/kotlin/au/monster/tracker/MainActivity.kt"
-          cp -Rn "$scaffold/tracker/android/." android/
+          rsync -a --ignore-existing "$scaffold/tracker/android/" android/
           test -f android/app/src/main/java/au/monster/tracker/MainActivity.java
           grep -q 'android:name="au.monster.tracker.MainActivity"' android/app/src/main/AndroidManifest.xml
           # Preserve the existing installed Android application ID and version.
@@ -159,7 +159,7 @@ jobs:
           disable-animations: true
           emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
           script: |
-            set -euo pipefail
+            set -eu
             echo 'Waiting up to 3 minutes for the Android device...'
             timeout 180 adb wait-for-device
             boot_deadline=$((SECONDS + 180))
