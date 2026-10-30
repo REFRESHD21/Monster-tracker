@@ -1,7 +1,5 @@
 name: JTC Drinks admin checks
 on:
-  push:
-    branches: [feature/jtc-drinks-supabase-admin]
   pull_request:
     branches: [main]
     paths:
@@ -13,9 +11,8 @@ on:
 permissions:
   contents: read
 
-# Avoid running the same emulator upgrade test twice for a push and its PR.
+# Keep one authoritative PR check per branch; push events are intentionally not duplicated.
 concurrency:
-  # Push and pull_request events for the same branch share one group.
   group: jtc-admin-${{ github.head_ref || github.ref_name }}
   cancel-in-progress: true
 
