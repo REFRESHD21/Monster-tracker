@@ -25,7 +25,7 @@ class _JtcAdminPanelState extends State<JtcAdminPanel> {
   bool loading = true, working = false, admin = false;
   String? error;
   int section = 0;
-  List<Map<String,dynamic>> products = [], reservations = [], messages = [];
+  List<Map<String,dynamic>> products = [], reservations = [], messages = [], productRequests = [];
   final email = TextEditingController(), password = TextEditingController();
 
   @override void initState() { super.initState(); connect(); }
@@ -76,8 +76,9 @@ class _JtcAdminPanelState extends State<JtcAdminPanel> {
         db!.from('products').select().order('name'),
         db!.from('reservations').select().order('requested_at', ascending: false).limit(200),
         db!.from('contact_messages').select().order('created_at', ascending: false).limit(100),
+        db!.from('product_requests').select().order('created_at', ascending: false).limit(100),
       ]);
-      if (mounted) setState(() { products = List<Map<String,dynamic>>.from(r[0]); reservations = List<Map<String,dynamic>>.from(r[1]); messages = List<Map<String,dynamic>>.from(r[2]); loading = false; error = null; });
+      if (mounted) setState(() { products = List<Map<String,dynamic>>.from(r[0]); reservations = List<Map<String,dynamic>>.from(r[1]); messages = List<Map<String,dynamic>>.from(r[2]); productRequests = List<Map<String,dynamic>>.from(r[3]); loading = false; error = null; });
     } catch (_) { if (mounted) setState(() { loading = false; error = 'Could not load admin data. Verify Supabase permissions.'; }); }
   }
 
@@ -124,6 +125,34 @@ class _JtcAdminPanelState extends State<JtcAdminPanel> {
     note.dispose();
   }
 
+  Future<void> productRequestAction(Map<String,dynamic> request, String status) async {
+    final note = TextEditingController(text: request['admin_note']?.toString() ?? '');
+    final yes = await showDialog<bool>(context: context, builder: (d) => AlertDialog(
+      title: const Text('Update product request'),
+      content: TextField(controller: note, maxLines: 3, decoration: const InputDecoration(labelText: 'Admin note (optional)')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')),
+        FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('Save')),
+      ],
+    ));
+    if (yes == true) await runAction(() async {
+      await db!.from('product_requests').update({
+        'status': status,
+        'admin_note': note.text.trim().isEmpty ? null : note.text.trim(),
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', request['id']);
+    }, 'Product request updated.');
+    note.dispose();
+  }
+
+  Future<void> markMessageHandled(Map<String,dynamic> message) async {
+    await runAction(() async {
+      await db!.from('contact_messages').update({
+        'handled_at': DateTime.now().toUtc().toIso8601String(),
+      }).eq('id', message['id']);
+    }, 'Message marked as handled.');
+  }
+
   String cash(dynamic n) => '\$' + (double.tryParse(n?.toString() ?? '') ?? 0).toStringAsFixed(2);
   @override Widget build(BuildContext context) {
     if (loading) return const Center(child: CircularProgressIndicator());
@@ -141,7 +170,7 @@ class _JtcAdminPanelState extends State<JtcAdminPanel> {
         ]),
       ]))),
       if (error != null) Card(color: Theme.of(context).colorScheme.errorContainer, child: Padding(padding: const EdgeInsets.all(12), child: Text(error!))),
-      SegmentedButton<int>(segments: const [ButtonSegment(value:0,label:Text('Products'),icon:Icon(Icons.inventory_2)),ButtonSegment(value:1,label:Text('Reservations'),icon:Icon(Icons.event_note)),ButtonSegment(value:2,label:Text('Messages'),icon:Icon(Icons.mail_outline))], selected: {section}, onSelectionChanged: (v) => setState(() => section = v.first)),
+      SegmentedButton<int>(segments: const [ButtonSegment(value:0,label:Text('Products'),icon:Icon(Icons.inventory_2)),ButtonSegment(value:1,label:Text('Reservations'),icon:Icon(Icons.event_note)),ButtonSegment(value:2,label:Text('Messages'),icon:Icon(Icons.mail_outline)),ButtonSegment(value:3,label:Text('Requests'),icon:Icon(Icons.lightbulb_outline))], selected: {section}, onSelectionChanged: (v) => setState(() => section = v.first)),
       const SizedBox(height: 10),
       if (section == 0) ...[
         Align(alignment: Alignment.centerRight, child: FilledButton.icon(onPressed: working ? null : () => editProduct(), icon: const Icon(Icons.add), label: const Text('Add product'))),
@@ -157,9 +186,29 @@ class _JtcAdminPanelState extends State<JtcAdminPanel> {
           if (r['status'] == 'pending') Wrap(children: [TextButton.icon(onPressed: working ? null : () => reservationAction(r, true), icon: const Icon(Icons.check), label: const Text('Approve')), TextButton.icon(onPressed: working ? null : () => reservationAction(r, false), icon: const Icon(Icons.close), label: const Text('Reject'))]),
           if (r['status'] == 'approved') Text('Expires: ' + (r['expires_at'] ?? 'not set').toString()),
         ])))),
-      ] else ...[
+      ] else if (section == 2) ...[
         if (messages.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Text('No customer messages yet.')),
-        ...messages.map((m) => Card(child: ListTile(title: Text(m['name'].toString()), subtitle: Text(m['email'].toString() + '\n' + m['message'].toString() + '\nReceived: ' + m['created_at'].toString()), isThreeLine: true, leading: const Icon(Icons.mail_outline)))),
+        ...messages.map((m) => Card(child: ListTile(
+          title: Text(m['name'].toString()),
+          subtitle: Text(m['email'].toString() + '\n' + m['message'].toString() + '\nReceived: ' + m['created_at'].toString() + (m['handled_at'] == null ? '' : '\nHandled')),
+          isThreeLine: true,
+          leading: const Icon(Icons.mail_outline),
+          trailing: m['handled_at'] == null ? IconButton(onPressed: working ? null : () => markMessageHandled(m), icon: const Icon(Icons.done), tooltip: 'Mark handled') : const Icon(Icons.check_circle_outline),
+        ))),
+      ] else ...[
+        if (productRequests.isEmpty) const Padding(padding: EdgeInsets.all(24), child: Text('No product requests yet.')),
+        ...productRequests.map((r) => Card(child: Padding(padding: const EdgeInsets.all(12), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Row(children: [Expanded(child: Text(r['product_name'].toString(), style: const TextStyle(fontWeight: FontWeight.bold))), Chip(label: Text(r['status'].toString().toUpperCase()))]),
+          Text(r['customer_name'].toString() + ' · ' + r['customer_email'].toString()),
+          if ((r['details'] ?? '').toString().isNotEmpty) Text(r['details'].toString()),
+          if ((r['admin_note'] ?? '').toString().isNotEmpty) Text('Admin note: ' + r['admin_note'].toString()),
+          Text('Received: ' + r['created_at'].toString()),
+          Wrap(children: [
+            TextButton(onPressed: working ? null : () => productRequestAction(r, 'reviewing'), child: const Text('Reviewing')),
+            TextButton(onPressed: working ? null : () => productRequestAction(r, 'completed'), child: const Text('Sourced')),
+            TextButton(onPressed: working ? null : () => productRequestAction(r, 'declined'), child: const Text('Decline')),
+          ]),
+        ])))),
       ],
       if (working) const Padding(padding: EdgeInsets.all(12), child: LinearProgressIndicator()),
     ]));
