@@ -44,20 +44,28 @@ class _JtcAdminPanelState extends State<JtcAdminPanel> {
   }
 
   Future<void> verifyAdmin() async {
-    if (db == null) return;
+    if (db == null || !mounted) return;
     setState(() { loading = true; error = null; });
     try {
       final user = db!.auth.currentUser;
-      if (user == null) { setState(() { admin = false; loading = false; }); return; }
+      if (user == null) {
+        if (!mounted) return;
+        setState(() { admin = false; loading = false; });
+        return;
+      }
       final rows = await db!.from('admin_users').select('user_id').eq('user_id', user.id);
+      if (!mounted) return;
       if (rows.isEmpty) {
         await db!.auth.signOut();
+        if (!mounted) return;
         setState(() { admin = false; loading = false; error = 'This account has not been authorised as an administrator.'; });
         return;
       }
       setState(() => admin = true);
       await loadData();
-    } catch (_) { if (mounted) setState(() { error = 'Could not verify admin access or load data. Check your account and permissions.'; loading = false; }); }
+    } catch (_) {
+      if (mounted) setState(() { error = 'Could not verify admin access or load data. Check your account and permissions.'; loading = false; });
+    }
   }
 
   Future<void> signIn() async {
