@@ -98,6 +98,8 @@ class _JtcAdminPanelState extends State<JtcAdminPanel> {
   }
 
   Future<void> editProduct([Map<String,dynamic>? p]) async {
+    // Keep the admin editor independent of Form/FormField inherited state.
+    // This avoids a Flutter element-unmount assertion seen when this dialog closes.
     final name = TextEditingController(text: p?['name']?.toString() ?? '');
     final desc = TextEditingController(text: p?['description']?.toString() ?? '');
     final price = TextEditingController(text: p?['price']?.toString() ?? '');
@@ -105,25 +107,93 @@ class _JtcAdminPanelState extends State<JtcAdminPanel> {
     final image = TextEditingController(text: p?['image_url']?.toString() ?? '');
     final offer = TextEditingController(text: p?['bundle_offer']?.toString() ?? '');
     bool published = p?['is_published'] == true;
-    final key = GlobalKey<FormState>();
-    final ok = await showDialog<bool>(context: context, builder: (d) => StatefulBuilder(builder: (d, refresh) => AlertDialog(
-      title: Text(p == null ? 'Add website product' : 'Edit website product'),
-      content: SizedBox(width: 440, child: SingleChildScrollView(child: Form(key: key, child: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextFormField(controller: name, decoration: const InputDecoration(labelText: 'Product name'), validator: (v) => (v?.trim().isEmpty ?? true) ? 'Required' : null),
-        TextFormField(controller: desc, decoration: const InputDecoration(labelText: 'Description'), maxLines: 2),
-        TextFormField(controller: price, decoration: const InputDecoration(labelText: 'Price (AUD)'), keyboardType: const TextInputType.numberWithOptions(decimal: true), validator: (v) { final n = double.tryParse(v ?? ''); return n == null || n < 0 ? 'Enter a valid price' : null; }),
-        TextFormField(controller: stock, decoration: const InputDecoration(labelText: 'Stock on hand'), keyboardType: TextInputType.number, validator: (v) { final n = int.tryParse(v ?? ''); return n == null || n < 0 ? 'Enter a whole number ≥ 0' : null; }),
-        TextFormField(controller: image, decoration: const InputDecoration(labelText: 'Image URL (optional)')),
-        TextFormField(controller: offer, decoration: const InputDecoration(labelText: 'Bundle offer (optional)')),
-        SwitchListTile(value: published, onChanged: (v) => refresh(() => published = v), title: const Text('Publish on website'), contentPadding: EdgeInsets.zero),
-      ])))),
-      actions: [TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('Cancel')), FilledButton(onPressed: () { if (key.currentState!.validate()) Navigator.pop(d, true); }, child: const Text('Save'))],
-    )));
-    if (ok == true) {
-      final data = <String,dynamic>{'name':name.text.trim(),'description':desc.text.trim(),'price':double.parse(price.text),'stock_on_hand':int.parse(stock.text),'image_url':image.text.trim().isEmpty ? null : image.text.trim(),'bundle_offer':offer.text.trim().isEmpty ? null : offer.text.trim(),'is_published':published,'updated_at':DateTime.now().toUtc().toIso8601String()};
-      await runAction(() async { if (p == null) { await db!.from('products').insert(data); } else { await db!.from('products').update(data).eq('id', p['id']); } }, 'Product saved.');
+    String? validationError;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, refresh) => AlertDialog(
+          title: Text(p == null ? 'Add website product' : 'Edit website product'),
+          content: SizedBox(
+            width: 440,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(controller: name, decoration: const InputDecoration(labelText: 'Product name')),
+                  TextField(controller: desc, decoration: const InputDecoration(labelText: 'Description'), maxLines: 2),
+                  TextField(controller: price, decoration: const InputDecoration(labelText: 'Price (AUD)'), keyboardType: const TextInputType.numberWithOptions(decimal: true)),
+                  TextField(controller: stock, decoration: const InputDecoration(labelText: 'Stock on hand'), keyboardType: TextInputType.number),
+                  TextField(controller: image, decoration: const InputDecoration(labelText: 'Image URL (optional)')),
+                  TextField(controller: offer, decoration: const InputDecoration(labelText: 'Bundle offer (optional)')),
+                  SwitchListTile(
+                    value: published,
+                    onChanged: (value) => refresh(() => published = value),
+                    title: const Text('Publish on website'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  if (validationError != null)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text(validationError!, style: TextStyle(color: Theme.of(dialogContext).colorScheme.error)),
+                    ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.of(dialogContext).pop(false), child: const Text('Cancel')),
+            FilledButton(
+              onPressed: () {
+                final parsedPrice = double.tryParse(price.text.trim());
+                final parsedStock = int.tryParse(stock.text.trim());
+                if (name.text.trim().isEmpty) {
+                  refresh(() => validationError = 'Enter a product name.');
+                  return;
+                }
+                if (parsedPrice == null || parsedPrice < 0 || !parsedPrice.isFinite) {
+                  refresh(() => validationError = 'Enter a valid price.');
+                  return;
+                }
+                if (parsedStock == null || parsedStock < 0) {
+                  refresh(() => validationError = 'Enter a whole stock quantity of 0 or more.');
+                  return;
+                }
+                Navigator.of(dialogContext).pop(true);
+              },
+              child: const Text('Save'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (ok == true && mounted) {
+      final data = <String, dynamic>{
+        'name': name.text.trim(),
+        'description': desc.text.trim(),
+        'price': double.parse(price.text.trim()),
+        'stock_on_hand': int.parse(stock.text.trim()),
+        'image_url': image.text.trim().isEmpty ? null : image.text.trim(),
+        'bundle_offer': offer.text.trim().isEmpty ? null : offer.text.trim(),
+        'is_published': published,
+        'updated_at': DateTime.now().toUtc().toIso8601String(),
+      };
+      await runAction(() async {
+        if (p == null) {
+          await db!.from('products').insert(data);
+        } else {
+          await db!.from('products').update(data).eq('id', p['id']);
+        }
+      }, 'Product saved.');
     }
-    name.dispose(); desc.dispose(); price.dispose(); stock.dispose(); image.dispose(); offer.dispose();
+
+    name.dispose();
+    desc.dispose();
+    price.dispose();
+    stock.dispose();
+    image.dispose();
+    offer.dispose();
   }
 
   Future<void> reservationAction(Map<String,dynamic> r, bool approve) async {
