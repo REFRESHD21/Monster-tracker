@@ -130,7 +130,7 @@ jobs:
           test -s "$APK"
           BT="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -n 1)"
           "$BT/aapt" dump badging "$APK" | grep -F "package: name='au.monster.tracker.plus' versionCode='20' versionName='2.3.3'"
-          baseline="$(find upgrade-baseline -name '*.apk' -type f | head -n 1)"
+          baseline="$(find ../upgrade-baseline -name '*.apk' -type f | head -n 1)"
           test -n "$baseline"
           baseline_cert="$("$BT/apksigner" verify --print-certs "$baseline" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1)"
           current_cert="$("$BT/apksigner" verify --print-certs "$APK" | sed -n 's/.*certificate SHA-256 digest: //p' | head -n 1)"
