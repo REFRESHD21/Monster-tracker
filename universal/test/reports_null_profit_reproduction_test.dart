@@ -68,8 +68,9 @@ void main() {
             .singleWhere((row) => row['productId'] == 'report-test-drink');
         expect(productRow['profit'], isNull);
 
-        // The Reports screen formats that null with money(int), which throws.
-        expect(tester.takeException(), isA<TypeError>());
+        // Reports must preserve the unknown value without crashing or calling it zero.
+        expect(tester.takeException(), isNull);
+        expect(find.textContaining('Product profit Incomplete'), findsOneWidget);
       } finally {
         await tester.pumpWidget(const SizedBox());
         await tester.pumpAndSettle();
@@ -78,7 +79,6 @@ void main() {
       }
     });
   });
-}
 
   testWidgets('catalogue editor survives repeated open and cancel cycles', (tester) async {
     tester.view.physicalSize = const Size(420, 900);
