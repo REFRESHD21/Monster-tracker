@@ -79,3 +79,54 @@ void main() {
     });
   });
 }
+
+  testWidgets('catalogue editor survives repeated open and cancel cycles', (tester) async {
+    tester.view.physicalSize = const Size(420, 900);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    FlutterSecureStorage.setMockInitialValues({});
+
+    await tester.runAsync(() async {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfiNoIsolate;
+      final folder = await Directory.systemTemp.createTemp('tracker-catalogue-stress-');
+      await databaseFactory.setDatabasesPath(folder.path);
+      final repo = await Repository.open();
+      try {
+        final next = clone(repo.state);
+        (next['products'] as List).add({
+          'id': 'catalogue-test-drink',
+          'name': 'Test drink',
+          'category': 'Drink',
+          'variant': 'Original',
+          'purchaseCost': 100,
+          'sellingPrice': 350,
+          'minimum': 0,
+          'barcode': '',
+          'photo': null,
+          'archived': false,
+        });
+        await repo.save(next);
+        await tester.pumpWidget(TrackerApp(repository: repo));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Products'));
+        await tester.pumpAndSettle();
+
+        for (var i = 0; i < 25; i++) {
+          await tester.tap(find.byKey(const ValueKey('product-options-catalogue-test-drink')));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Edit product / prices'));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text('Cancel'));
+          await tester.pumpAndSettle();
+          expect(tester.takeException(), isNull, reason: 'Catalogue editor cycle $i');
+        }
+      } finally {
+        await tester.pumpWidget(const SizedBox());
+        await tester.pumpAndSettle();
+        await repo.close();
+        await folder.delete(recursive: true);
+      }
+    });
+  });
