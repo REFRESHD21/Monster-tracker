@@ -107,6 +107,7 @@ class _JtcAdminPanelState extends State<JtcAdminPanel> {
     final image = TextEditingController(text: p?['image_url']?.toString() ?? '');
     final offer = TextEditingController(text: p?['bundle_offer']?.toString() ?? '');
     bool published = p?['is_published'] == true;
+    bool showMonsterBrand = p?['show_monster_brand'] != false;
     String? validationError;
 
     final ok = await showDialog<bool>(
@@ -126,6 +127,12 @@ class _JtcAdminPanelState extends State<JtcAdminPanel> {
                   TextField(controller: stock, decoration: const InputDecoration(labelText: 'Stock on hand'), keyboardType: TextInputType.number),
                   TextField(controller: image, decoration: const InputDecoration(labelText: 'Image URL (optional)')),
                   TextField(controller: offer, decoration: const InputDecoration(labelText: 'Bundle offer (optional)')),
+                  SwitchListTile(
+                    value: showMonsterBrand,
+                    onChanged: (value) => refresh(() => showMonsterBrand = value),
+                    title: const Text('Show MONSTER label above this product'),
+                    contentPadding: EdgeInsets.zero,
+                  ),
                   SwitchListTile(
                     value: published,
                     onChanged: (value) => refresh(() => published = value),
@@ -176,6 +183,7 @@ class _JtcAdminPanelState extends State<JtcAdminPanel> {
         'stock_on_hand': int.parse(stock.text.trim()),
         'image_url': image.text.trim().isEmpty ? null : image.text.trim(),
         'bundle_offer': offer.text.trim().isEmpty ? null : offer.text.trim(),
+        'show_monster_brand': showMonsterBrand,
         'is_published': published,
         'updated_at': DateTime.now().toUtc().toIso8601String(),
       };
