@@ -136,7 +136,7 @@ class BusinessFundsCloud {
         });
       }
       final remote = await _snapshot(token,businessId);
-      cloudEntries = (remote['entries'] as List? ?? const []).map((e)=>obj(e)).toList();
+      final cloudEntries = (remote['entries'] as List? ?? const []).map((e)=>obj(e)).toList();
       final merged = <Obj>[for(final e in localEntries)clone(e)];
       final mergedIds = {for(final e in merged)e['id']};
       for (final entry in cloudEntries) {
