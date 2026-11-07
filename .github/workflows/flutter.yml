@@ -1,7 +1,7 @@
 name: Universal tracker
 on:
   push:
-    branches: ['feature/flutter-universal-tracker', 'development/toggleable-business-modules', 'feature/sale-funds-mix-match']
+    branches: ['feature/flutter-universal-tracker', 'development/toggleable-business-modules', 'feature/sale-funds-mix-match', 'feature/business-funds-cloud-sync']
   pull_request:
     branches: ['feature/sheets-compatible-update', 'development/toggleable-business-modules']
   workflow_dispatch:
@@ -109,6 +109,8 @@ jobs:
       - run: python3 scripts/flutter/bootstrap.py
       - working-directory: universal
         run: flutter build apk --release --dart-define-from-file=config/google-oauth.json && flutter build apk --debug --dart-define-from-file=config/google-oauth.json
+      - name: Validate Android device-check shell syntax
+        run: bash -n scripts/flutter/device-check.sh
       - name: Enable emulator acceleration
         run: sudo chmod 666 /dev/kvm
       - uses: reactivecircus/android-emulator-runner@v2

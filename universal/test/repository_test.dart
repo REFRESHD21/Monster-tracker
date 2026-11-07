@@ -130,4 +130,21 @@ void main(){
     final reopened=await Repository.open();expect(reopened.state['businessName'],'Newest records');await reopened.close();
   });
 
+  test('Business Funds entries are append-only while new adjustments can be added',()async{
+    final r=await Repository.open();
+    final first=clone(r.state);
+    first['moneyEntries']=[{'id':'funds-history-001','type':'add','amount':1000,'delta':1000,'note':'Opening funds','date':1780000000000}];
+    await r.save(first);
+    final edited=clone(r.state);objects(edited['moneyEntries']).first['delta']=500;
+    await expectLater(r.save(edited),throwsFormatException);
+    final removed=clone(r.state);removed['moneyEntries']=[];
+    await expectLater(r.save(removed),throwsFormatException);
+    final appended=clone(r.state);
+    (appended['moneyEntries'] as List).add({'id':'funds-history-002','type':'remove','amount':250,'delta':-250,'note':'Cash taken out','date':1780000001000});
+    await r.save(appended);
+    expect(objects(r.state['moneyEntries']),hasLength(2));
+    expect(objects(r.state['moneyEntries']).fold<int>(0,(sum,e)=>sum+(e['delta'] as int)),750);
+    await r.close();
+  });
+
 }
