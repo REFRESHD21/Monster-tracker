@@ -42,7 +42,7 @@ class BusinessFundsCloud {
       try { decoded = jsonDecode(text); } catch (_) { decoded = <String,dynamic>{'message':text}; }
       if (response.statusCode < 200 || response.statusCode >= 300) {
         final message = decoded is Map ? (decoded['msg'] ?? decoded['message'] ?? decoded['error_description'] ?? decoded['error']) : null;
-        throw FormatException(message?.toString() ?? 'Cloud funds request failed (\${response.statusCode}).');
+        throw FormatException(message?.toString() ?? 'Cloud funds request failed (${response.statusCode}).');
       }
       if (decoded is! Map<String,dynamic>) throw const FormatException('Invalid cloud funds response.');
       return decoded;
@@ -66,7 +66,7 @@ class BusinessFundsCloud {
     if (access is! String || refresh is! String || expires is! num) throw const FormatException('Supabase did not return a valid sign-in session.');
     await businessFundsSecrets.write(key:_accessKey,value:access);
     await businessFundsSecrets.write(key:_refreshKey,value:refresh);
-    await businessFundsSecrets.write(key:_expiryKey,value:'\${DateTime.now().millisecondsSinceEpoch + expires.toInt()*1000}');
+    await businessFundsSecrets.write(key:_expiryKey,value:'${DateTime.now().millisecondsSinceEpoch + expires.toInt()*1000}');
   }
 
   static Future<String> _accessToken() async {
