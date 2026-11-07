@@ -24,41 +24,59 @@ authorisation credential.
 A Gemini function-calling client can expose this function:
 
 ```json
-{
-  "name": "adjust_business_tracker_balance",
-  "description": "Adjust only the Business Tracker funds balance. Use add for money received, remove for money taken out, and recount when the user has physically counted the funds. Never infer an amount or use this for bank-account balances.",
-  "parameters": {
-    "type": "OBJECT",
-    "properties": {
-      "business_id": {
-        "type": "STRING",
-        "description": "The registered Business Tracker businessId for this admin."
+[
+  {
+    "name": "get_business_tracker_balance",
+    "description": "Read the current Business Tracker funds balance and its append-only entry history. Do not interpret this as a bank-account balance.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "business_id": {
+          "type": "STRING",
+          "description": "The registered Business Tracker businessId for this admin."
+        }
       },
-      "action": {
-        "type": "STRING",
-        "enum": ["add", "remove", "recount"]
+      "required": ["business_id"]
+    }
+  },
+  {
+    "name": "adjust_business_tracker_balance",
+    "description": "Adjust only the Business Tracker funds balance. Use add for money received, remove for money taken out, and recount when the user has physically counted the funds. Never infer an amount or use this for bank-account balances.",
+    "parameters": {
+      "type": "OBJECT",
+      "properties": {
+        "business_id": {
+          "type": "STRING",
+          "description": "The registered Business Tracker businessId for this admin."
+        },
+        "action": {
+          "type": "STRING",
+          "enum": ["add", "remove", "recount"]
+        },
+        "amount_cents": {
+          "type": "INTEGER",
+          "description": "AUD cents. For recount, the full counted balance, not the difference."
+        },
+        "note": {
+          "type": "STRING",
+          "description": "Short reason supplied by the user."
+        },
+        "id": {
+          "type": "STRING",
+          "description": "A stable unique idempotency ID reused for retries of the same adjustment."
+        }
       },
-      "amount_cents": {
-        "type": "INTEGER",
-        "description": "AUD cents. For recount, the full counted balance, not the difference."
-      },
-      "note": {
-        "type": "STRING",
-        "description": "Short reason supplied by the user."
-      },
-      "id": {
-        "type": "STRING",
-        "description": "A stable unique idempotency ID reused for retries of the same adjustment."
-      }
-    },
-    "required": ["business_id", "action", "amount_cents", "id"]
+      "required": ["business_id", "action", "amount_cents", "id"]
+    }
   }
-}
+]
 ```
 
-## HTTP call
+## HTTP calls
 
-`POST https://jmuxmgsbmnyqmetakhua.supabase.co/functions/v1/business-funds`
+Read the balance with `GET https://jmuxmgsbmnyqmetakhua.supabase.co/functions/v1/business-funds?business_id=<business_id>`. The JSON response includes `balance` (AUD cents) and `entries`.
+
+Adjust the balance with `POST https://jmuxmgsbmnyqmetakhua.supabase.co/functions/v1/business-funds`
 
 Headers:
 
