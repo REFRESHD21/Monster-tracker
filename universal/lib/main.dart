@@ -415,14 +415,14 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
       await showDialog<void>(context:c,builder:(d)=>StatefulBuilder(builder:(d,update)=>AlertDialog(
         title:Text(existing==null?'Add product':'Edit product'),
         content:SizedBox(width:440,child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
-          field(name,'Product name'),
-          field(category,'Category'),
-          field(variant,'Variant (size, flavour, shade)'),
+          field(name,'Product name',maxLength:120),
+          field(category,'Category',maxLength:80),
+          field(variant,'Variant (size, flavour, shade)',maxLength:120),
           field(cost,'Default purchase cost per unit (AUD)',number:true),
           field(price,'Selling price per unit (AUD)',number:true),
           field(deal,'Optional 2-item deal TOTAL (AUD; blank disables)',number:true),
           field(minimum,'Low-stock minimum',number:true),
-          field(barcode,'Barcode (leading zeros retained)'),
+          field(barcode,'Barcode (leading zeros retained)',maxLength:80),
           TextButton.icon(onPressed:()async{
             final code=await Navigator.push<String>(d,MaterialPageRoute(builder:(_)=>const Scanner()));
             if(code!=null)barcode.text=code;
@@ -466,7 +466,7 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
     }
   }
 
-  Widget field(TextEditingController controller,String label,{bool number=false,bool password=false,ValueChanged<String>? onChanged})=>Padding(padding:const EdgeInsets.symmetric(vertical:7),child:TextField(controller:controller,obscureText:password,onChanged:onChanged,keyboardType:number?const TextInputType.numberWithOptions(decimal:true):TextInputType.text,decoration:InputDecoration(labelText:label)));
+  Widget field(TextEditingController controller,String label,{bool number=false,bool password=false,int? maxLength,ValueChanged<String>? onChanged})=>Padding(padding:const EdgeInsets.symmetric(vertical:7),child:TextField(controller:controller,obscureText:password,maxLength:maxLength,onChanged:onChanged,keyboardType:number?const TextInputType.numberWithOptions(decimal:true):TextInputType.text,decoration:InputDecoration(labelText:label)));
   Future<void> transaction(BuildContext c,String type,Obj? p,{Obj? source}) async {
     if(type=='sale'){await recordSale(c,p);return;}
     final quantity=TextEditingController(text:'1'),total=TextEditingController(text:amount(type=='sale'?p!['sellingPrice']:type=='restock'?p!['purchaseCost']:0)),fee=TextEditingController(text:'0.00'),note=TextEditingController(),gst=TextEditingController(text:'0.00');String payment='cash';Obj? attached;DateTime date=DateTime.now().toUtc().add(const Duration(hours:8));bool gstCredit=false,totalEdited=false;
