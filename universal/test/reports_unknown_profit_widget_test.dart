@@ -64,15 +64,18 @@ void main() {
       );
 
       await tester.pumpWidget(TrackerApp(repository: repo));
-      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 100));
       await tester.tap(find.text('Reports').last);
-      await tester.pumpAndSettle();
+      // TrackerApp performs background sync checks and has periodic work; avoid
+      // pumpAndSettle waiting indefinitely for unrelated scheduled frames.
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 300));
 
       expect(find.textContaining('Product profit Incomplete'), findsOneWidget);
       expect(tester.takeException(), isNull);
     } finally {
       await tester.pumpWidget(const SizedBox());
-      await tester.pumpAndSettle();
+      await tester.pump();
       await repo.close();
       await folder.delete(recursive: true);
     }
