@@ -395,9 +395,77 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
     mime=attachmentMime(bytes);final a=<String,dynamic>{'id':const Uuid().v4(),'mime':mime,'data':base64Encode(bytes),'sha256':bytesHash(bytes)};verifyAttachment(a);return a;
   }
   Future<void> editProduct(BuildContext c,[Obj? existing]) async {
-    final name=TextEditingController(text:existing?['name'] ?? ''), category=TextEditingController(text:existing?['category'] ?? ''),variant=TextEditingController(text:existing?['variant'] ?? ''),cost=TextEditingController(text:existing!=null&&existing['purchaseCost']==null?'':amount(existing?['purchaseCost'] ?? 0)),price=TextEditingController(text:existing!=null&&existing['sellingPrice']==null?'':amount(existing?['sellingPrice'] ?? 0)),deal=TextEditingController(text:existing?['twoItemPrice']==null?'':amount(existing!['twoItemPrice'])),minimum=TextEditingController(text:'${existing?['minimum'] ?? 0}'),barcode=TextEditingController(text:existing?['barcode'] ?? '');Obj? image=existing?['photo']==null?null:obj(existing!['photo']);
-    await showDialog<void>(context:c,builder:(d)=>StatefulBuilder(builder:(d,update)=>AlertDialog(title:Text(existing==null?'Add product':'Edit product'),content:SizedBox(width:440,child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[field(name,'Product name'),field(category,'Category'),field(variant,'Variant (size, flavour, shade)'),field(cost,'Default purchase cost per unit (AUD)',number:true),field(price,'Selling price per unit (AUD)',number:true),field(deal,'Optional 2-item deal TOTAL (AUD; blank disables)',number:true),field(minimum,'Low-stock minimum',number:true),field(barcode,'Barcode (leading zeros retained)'),TextButton.icon(onPressed:()async{final code=await Navigator.push<String>(d,MaterialPageRoute(builder:(_)=>const Scanner()));if(code!=null)barcode.text=code;},icon:const Icon(Icons.qr_code_scanner),label:const Text('Scan barcode')),TextButton.icon(onPressed:()async{try{final picked=await photo(d);if(picked!=null)update(()=>image=picked);}catch(e){if(d.mounted)ScaffoldMessenger.of(d).showSnackBar(SnackBar(content:Text('$e')));}},icon:const Icon(Icons.photo_camera_outlined),label:Text(image==null?'Add product photo':'Replace product photo')),if(image!=null)Image.memory(Uint8List.fromList(attachmentBytes(image!)),height:100)]))),actions:[TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel')),FilledButton(onPressed:(){perform(c,()async{final p=<String,dynamic>{...?existing,'twoItemPrice':deal.text.trim().isEmpty?null:cents(deal.text),'archived':existing?['archived'] ?? false,'id':existing?['id'] ?? const Uuid().v4(),'name':name.text.trim(),'category':category.text.trim(),'variant':variant.text.trim(),'purchaseCost':cost.text.trim().isEmpty?null:cents(cost.text),'sellingPrice':price.text.trim().isEmpty?null:cents(price.text),'minimum':integer(int.parse(minimum.text),0,10000),'barcode':barcode.text.trim(),'photo':image};final next=clone(s),all=objects(next['products']);final index=all.indexWhere((x)=>x['id']==p['id']);if(index<0)all.add(p);else all[index]=p;next['products']=all;await repo.save(next);if(d.mounted)Navigator.pop(d);});},child:const Text('Save product'))])));
+    // These controllers belong to this dialog only. Dispose them after either
+    // Save or Cancel so repeated catalogue edits do not retain old text state.
+    final controllers = <TextEditingController>[
+      TextEditingController(text:existing?['name'] ?? ''),
+      TextEditingController(text:existing?['category'] ?? ''),
+      TextEditingController(text:existing?['variant'] ?? ''),
+      TextEditingController(text:existing!=null&&existing['purchaseCost']==null?'':amount(existing?['purchaseCost'] ?? 0)),
+      TextEditingController(text:existing!=null&&existing['sellingPrice']==null?'':amount(existing?['sellingPrice'] ?? 0)),
+      TextEditingController(text:existing?['twoItemPrice']==null?'':amount(existing!['twoItemPrice'])),
+      TextEditingController(text:'${existing?['minimum'] ?? 0}'),
+      TextEditingController(text:existing?['barcode'] ?? ''),
+    ];
+    final name=controllers[0],category=controllers[1],variant=controllers[2],
+      cost=controllers[3],price=controllers[4],deal=controllers[5],
+      minimum=controllers[6],barcode=controllers[7];
+    Obj? image=existing?['photo']==null?null:obj(existing!['photo']);
+    try {
+      await showDialog<void>(context:c,builder:(d)=>StatefulBuilder(builder:(d,update)=>AlertDialog(
+        title:Text(existing==null?'Add product':'Edit product'),
+        content:SizedBox(width:440,child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
+          field(name,'Product name'),
+          field(category,'Category'),
+          field(variant,'Variant (size, flavour, shade)'),
+          field(cost,'Default purchase cost per unit (AUD)',number:true),
+          field(price,'Selling price per unit (AUD)',number:true),
+          field(deal,'Optional 2-item deal TOTAL (AUD; blank disables)',number:true),
+          field(minimum,'Low-stock minimum',number:true),
+          field(barcode,'Barcode (leading zeros retained)'),
+          TextButton.icon(onPressed:()async{
+            final code=await Navigator.push<String>(d,MaterialPageRoute(builder:(_)=>const Scanner()));
+            if(code!=null)barcode.text=code;
+          },icon:const Icon(Icons.qr_code_scanner),label:const Text('Scan barcode')),
+          TextButton.icon(onPressed:()async{
+            try{final picked=await photo(d);if(picked!=null)update(()=>image=picked);}
+            catch(e){if(d.mounted)ScaffoldMessenger.of(d).showSnackBar(SnackBar(content:Text('$e')));}
+          },icon:const Icon(Icons.photo_camera_outlined),label:Text(image==null?'Add product photo':'Replace product photo')),
+          if(image!=null)Image.memory(Uint8List.fromList(attachmentBytes(image!)),height:100),
+        ]))),
+        actions:[
+          TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel')),
+          FilledButton(onPressed:(){
+            perform(c,()async{
+              final p=<String,dynamic>{
+                ...?existing,
+                'twoItemPrice':deal.text.trim().isEmpty?null:cents(deal.text),
+                'archived':existing?['archived'] ?? false,
+                'id':existing?['id'] ?? const Uuid().v4(),
+                'name':name.text.trim(),
+                'category':category.text.trim(),
+                'variant':variant.text.trim(),
+                'purchaseCost':cost.text.trim().isEmpty?null:cents(cost.text),
+                'sellingPrice':price.text.trim().isEmpty?null:cents(price.text),
+                'minimum':integer(int.parse(minimum.text),0,10000),
+                'barcode':barcode.text.trim(),
+                'photo':image,
+              };
+              final next=clone(s),all=objects(next['products']);
+              final index=all.indexWhere((x)=>x['id']==p['id']);
+              if(index<0)all.add(p);else all[index]=p;
+              next['products']=all;
+              await repo.save(next);
+              if(d.mounted)Navigator.pop(d);
+            });
+          },child:const Text('Save product')),
+        ],
+      )));
+    } finally {
+      for(final controller in controllers){controller.dispose();}
+    }
   }
+
   Widget field(TextEditingController controller,String label,{bool number=false,bool password=false,ValueChanged<String>? onChanged})=>Padding(padding:const EdgeInsets.symmetric(vertical:7),child:TextField(controller:controller,obscureText:password,onChanged:onChanged,keyboardType:number?const TextInputType.numberWithOptions(decimal:true):TextInputType.text,decoration:InputDecoration(labelText:label)));
   Future<void> transaction(BuildContext c,String type,Obj? p,{Obj? source}) async {
     if(type=='sale'){await recordSale(c,p);return;}
