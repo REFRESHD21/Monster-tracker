@@ -140,7 +140,7 @@ void main(){
     final removed=clone(r.state);removed['moneyEntries']=[];
     await expectLater(r.save(removed),throwsFormatException);
     final appended=clone(r.state);
-    objects(appended['moneyEntries']).add({'id':'funds-history-002','type':'remove','amount':250,'delta':-250,'note':'Cash taken out','date':1780000001000});
+    (appended['moneyEntries'] as List).add({'id':'funds-history-002','type':'remove','amount':250,'delta':-250,'note':'Cash taken out','date':1780000001000});
     await r.save(appended);
     expect(objects(r.state['moneyEntries']),hasLength(2));
     expect(objects(r.state['moneyEntries']).fold<int>(0,(sum,e)=>sum+(e['delta'] as int)),750);
