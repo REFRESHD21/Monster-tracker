@@ -58,6 +58,13 @@ class BusinessFundsCloud {
       body:{'email':email.trim(),'password':password},
     );
     await _saveSession(result);
+    try {
+      final token = await _accessToken();
+      await _request(_uri('/functions/v1/business-funds', {'action':'businesses'}),token:token);
+    } catch (_) {
+      await signOut();
+      rethrow;
+    }
     await businessFundsSecrets.write(key:_errorKey,value:'');
   }
 
