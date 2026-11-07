@@ -131,6 +131,7 @@ class BusinessFundsCloud {
         final batch = missing.skip(offset).take(100).toList();
         await _request(_uri('/functions/v1/business-funds'),method:'POST',token:token,body:{
           'business_id':businessId,
+          'business_name':state['businessName'],
           'action':'sync',
           'entries':batch,
         });
