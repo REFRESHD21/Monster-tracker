@@ -56,6 +56,8 @@ class Repository {
     validateProductChanges(state, candidate, restoring:restoring);
     validateStocktakeChanges(state, candidate);
     validateState(candidate);final before=objects(state['events']),after=objects(candidate['events']);
+    final beforeFunds=objects(state['moneyEntries'] ?? const <dynamic>[]),afterFunds=objects(candidate['moneyEntries'] ?? const <dynamic>[]);
+    if(canonical(afterFunds.take(beforeFunds.length).toList())!=canonical(beforeFunds))throw const FormatException('Business Funds history is append-only. Existing entries cannot be edited or removed.');
     if(canonical(after.take(before.length).toList())!=canonical(before) || state['legacy']!=null && canonical(state['legacy'])!=canonical(candidate['legacy']))throw const FormatException('Historical records cannot be overwritten.');
     final text=canonical(candidate);if(utf8.encode(text).length>64*1024*1024)throw const FormatException('Data exceeds portable backup limit. Export and contact support.');
     final expectedRevision=revision;
