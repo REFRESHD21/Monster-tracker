@@ -115,19 +115,24 @@ class BusinessFundsCloud {
     }
 
     try {
+      await _request(_uri('/functions/v1/business-funds'),method:'POST',token:token,body:{
+        'business_id':businessId,
+        'business_name':state['businessName'],
+        'action':'register',
+      });
+      var remote = await _snapshot(token,businessId);
+      var cloudEntries = (remote['entries'] as List? ?? const []).map((e)=>obj(e)).toList();
       final localEntries = objects(state['moneyEntries'] ?? const <dynamic>[]);
-      // Register the installation and import its complete local ledger before
-      // reading cloud state. This is also safe when the cloud ledger is empty.
-      if (localEntries.isEmpty) {
-        await _request(_uri('/functions/v1/business-funds'),method:'POST',token:token,body:{
-          'business_id':businessId,
-          'business_name':state['businessName'],
-          'action':'sync',
-          'entries':<Obj>[],
-        });
+      final cloudById = {for(final e in cloudEntries)e['id'] as String:e};
+      for (final local in localEntries) {
+        final remoteEntry = cloudById[local['id']];
+        if (remoteEntry != null && canonical(_normalise(remoteEntry)) != canonical(_normalise(local))) {
+          throw FormatException('Funds history conflict for entry ${local['id']}. Nothing was overwritten.');
+        }
       }
-      for (var offset=0; offset<localEntries.length; offset+=100) {
-        final batch = localEntries.skip(offset).take(100).toList();
+      final missing = localEntries.where((e)=>!cloudById.containsKey(e['id'])).toList();
+      for (var offset=0; offset<missing.length; offset+=100) {
+        final batch = missing.skip(offset).take(100).toList();
         await _request(_uri('/functions/v1/business-funds'),method:'POST',token:token,body:{
           'business_id':businessId,
           'business_name':state['businessName'],
@@ -135,8 +140,8 @@ class BusinessFundsCloud {
           'entries':batch,
         });
       }
-      final remote = await _snapshot(token,businessId);
-      final cloudEntries = (remote['entries'] as List? ?? const []).map((e)=>obj(e)).toList();
+      remote = await _snapshot(token,businessId);
+      cloudEntries = (remote['entries'] as List? ?? const []).map((e)=>obj(e)).toList();
       final merged = <Obj>[for(final e in localEntries)clone(e)];
       final mergedIds = {for(final e in merged)e['id']};
       for (final entry in cloudEntries) {
