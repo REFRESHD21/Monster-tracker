@@ -47,7 +47,7 @@ void main(){
           0,(sum,entry)=>sum+(entry['delta'] as int),
         ),balanceBeforeAdjustment+1000);
 
-        await tester.testTextInput.hide();
+        tester.testTextInput.hide();
         await tester.pumpAndSettle();
         await tester.ensureVisible(find.text('Recount'));
         await tester.tap(find.text('Recount'));
