@@ -43,14 +43,14 @@ class _StartupState extends State<Startup> {
   });
 }
 class TrackerApp extends StatefulWidget {
-  final Repository repository; final Future<Uint8List?> Function()? pickBackupBytes; const TrackerApp({super.key,required this.repository,this.pickBackupBytes});
+  final Repository repository; final Future<Uint8List?> Function()? pickBackupBytes; final bool enableAutomaticWork; const TrackerApp({super.key,required this.repository,this.pickBackupBytes,this.enableAutomaticWork=true});
   @override State<TrackerApp> createState()=>_TrackerAppState();
 }
 class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
   int tab=0;bool archivedView=false,saleOpen=false;bool busy=false;bool syncing=false;String query='',period='all',productSort='revenue';DateTimeRange? customDates;Timer? autoTimer;String syncStatus='';String fundsSyncStatus='';
   Repository get repo=>widget.repository;Obj get s=>repo.state;
   Accounts get accounts=>validateState(s);
-  @override void initState(){super.initState();WidgetsBinding.instance.addObserver(this);autoTimer=Timer.periodic(const Duration(minutes:2),(_)=>automatic());Future.microtask(automatic);}
+  @override void initState(){super.initState();WidgetsBinding.instance.addObserver(this);if(widget.enableAutomaticWork){autoTimer=Timer.periodic(const Duration(minutes:2),(_)=>automatic());Future.microtask(automatic);}}
   @override void dispose(){WidgetsBinding.instance.removeObserver(this);autoTimer?.cancel();super.dispose();}
   @override void didChangeAppLifecycleState(AppLifecycleState state){if(state==AppLifecycleState.resumed)automatic();}
   Future<void> automatic() async {if(busy || syncing)return;syncing=true;try {if(await BusinessFundsCloud.connected){try{await BusinessFundsCloud.sync(repo);if(mounted)setState((){});}catch(_){}}try{await Sheets.initializeConnection();if(await secrets.read(key:'sheets-auto')=='true')await Sheets.upload(s);}catch(_){}await refreshSyncStatus();await refreshFundsSyncStatus();final p=await secrets.read(key:'backup-password'),every=await secrets.read(key:'backup-frequency'),last=int.tryParse(await secrets.read(key:'backup-last') ?? '0') ?? 0;if(p!=null && every!=null && DateTime.now().millisecondsSinceEpoch-last>(every=='weekly'?7:1)*86400000){await Backups.recovery(s,p);await secrets.write(key:'backup-last',value:'${DateTime.now().millisecondsSinceEpoch}');}}catch(_){}finally{syncing=false;} }
@@ -80,21 +80,17 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
   List<Obj> get moneyEntries=>objects(s['moneyEntries']??const <dynamic>[]);
   int get businessBalance=>moneyEntries.fold<int>(0,(sum,e)=>sum+(e['delta'] as int? ?? 0));
   Future<void> moneyAction(BuildContext c,String kind,{StateSetter? refresh}) async {
-    final current=businessBalance;
-    final amountController=TextEditingController(text:kind=='recount'?amount(current<0?0:current):''),noteController=TextEditingController();
-    final result=await showDialog<Obj>(context:c,builder:(d)=>AlertDialog(
-      title:Text(switch(kind){'add'=>'Add money','remove'=>'Take money out','recount'=>'Recount business funds',_=>'Money entry'}),
-      content:Column(mainAxisSize:MainAxisSize.min,children:[
-        TextField(controller:amountController,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:InputDecoration(labelText:kind=='recount'?'Actual amount counted (AUD)':'Amount (AUD)')),
-        TextField(controller:noteController,decoration:const InputDecoration(labelText:'Note / reason (optional)')),
-      ]),
-      actions:[
-        TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel')),
-        FilledButton(onPressed:(){try{final n=cents(amountController.text);if(kind!='recount'&&n<1)throw const FormatException('Enter an amount greater than zero.');final delta=kind=='add'?n:kind=='remove'?-n:n-current;Navigator.pop(d,{'id':const Uuid().v4(),'type':kind,'amount':n,'delta':delta,'note':noteController.text.trim(),'date':DateTime.now().millisecondsSinceEpoch});}catch(e){ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text('${e}')));}},child:const Text('Save entry')),
-      ]));
-    amountController.dispose();noteController.dispose();
+    final result=await showDialog<Obj>(
+      context:c,
+      builder:(dialogContext)=>_MoneyEntryDialog(kind:kind,currentBalance:businessBalance),
+    );
     if(result==null||!c.mounted)return;
-    await perform(c,()async{final next=clone(s);final entries=(next['moneyEntries']??=<dynamic>[]) as List;entries.add(result);await repo.save(next);},message:kind=='recount'?'Recount saved. Previous entries retained.':'Money entry saved.');
+    await perform(c,()async{
+      final next=clone(s);
+      final entries=(next['moneyEntries']??=<dynamic>[]) as List;
+      entries.add(result);
+      await repo.save(next);
+    },message:kind=='recount'?'Recount saved. Previous entries retained.':'Money entry saved.');
     if(refresh!=null)refresh((){});
   }
   Future<void> moneyManagement(BuildContext c) async {
@@ -395,75 +391,21 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
     mime=attachmentMime(bytes);final a=<String,dynamic>{'id':const Uuid().v4(),'mime':mime,'data':base64Encode(bytes),'sha256':bytesHash(bytes)};verifyAttachment(a);return a;
   }
   Future<void> editProduct(BuildContext c,[Obj? existing]) async {
-    // These controllers belong to this dialog only. Dispose them after either
-    // Save or Cancel so repeated catalogue edits do not retain old text state.
-    final controllers = <TextEditingController>[
-      TextEditingController(text:existing?['name'] ?? ''),
-      TextEditingController(text:existing?['category'] ?? ''),
-      TextEditingController(text:existing?['variant'] ?? ''),
-      TextEditingController(text:existing!=null&&existing['purchaseCost']==null?'':amount(existing?['purchaseCost'] ?? 0)),
-      TextEditingController(text:existing!=null&&existing['sellingPrice']==null?'':amount(existing?['sellingPrice'] ?? 0)),
-      TextEditingController(text:existing?['twoItemPrice']==null?'':amount(existing!['twoItemPrice'])),
-      TextEditingController(text:'${existing?['minimum'] ?? 0}'),
-      TextEditingController(text:existing?['barcode'] ?? ''),
-    ];
-    final name=controllers[0],category=controllers[1],variant=controllers[2],
-      cost=controllers[3],price=controllers[4],deal=controllers[5],
-      minimum=controllers[6],barcode=controllers[7];
-    Obj? image=existing?['photo']==null?null:obj(existing!['photo']);
-    try {
-      await showDialog<void>(context:c,builder:(d)=>StatefulBuilder(builder:(d,update)=>AlertDialog(
-        title:Text(existing==null?'Add product':'Edit product'),
-        content:SizedBox(width:440,child:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
-          field(name,'Product name',maxLength:120),
-          field(category,'Category',maxLength:80),
-          field(variant,'Variant (size, flavour, shade)',maxLength:120),
-          field(cost,'Default purchase cost per unit (AUD)',number:true),
-          field(price,'Selling price per unit (AUD)',number:true),
-          field(deal,'Optional 2-item deal TOTAL (AUD; blank disables)',number:true),
-          field(minimum,'Low-stock minimum',number:true),
-          field(barcode,'Barcode (leading zeros retained)',maxLength:80),
-          TextButton.icon(onPressed:()async{
-            final code=await Navigator.push<String>(d,MaterialPageRoute(builder:(_)=>const Scanner()));
-            if(code!=null)barcode.text=code;
-          },icon:const Icon(Icons.qr_code_scanner),label:const Text('Scan barcode')),
-          TextButton.icon(onPressed:()async{
-            try{final picked=await photo(d);if(picked!=null)update(()=>image=picked);}
-            catch(e){if(d.mounted)ScaffoldMessenger.of(d).showSnackBar(SnackBar(content:Text('$e')));}
-          },icon:const Icon(Icons.photo_camera_outlined),label:Text(image==null?'Add product photo':'Replace product photo')),
-          if(image!=null)Image.memory(Uint8List.fromList(attachmentBytes(image!)),height:100),
-        ]))),
-        actions:[
-          TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel')),
-          FilledButton(onPressed:(){
-            perform(c,()async{
-              final p=<String,dynamic>{
-                ...?existing,
-                'twoItemPrice':deal.text.trim().isEmpty?null:cents(deal.text),
-                'archived':existing?['archived'] ?? false,
-                'id':existing?['id'] ?? const Uuid().v4(),
-                'name':name.text.trim(),
-                'category':category.text.trim(),
-                'variant':variant.text.trim(),
-                'purchaseCost':cost.text.trim().isEmpty?null:cents(cost.text),
-                'sellingPrice':price.text.trim().isEmpty?null:cents(price.text),
-                'minimum':integer(int.parse(minimum.text),0,10000),
-                'barcode':barcode.text.trim(),
-                'photo':image,
-              };
-              final next=clone(s),all=objects(next['products']);
-              final index=all.indexWhere((x)=>x['id']==p['id']);
-              if(index<0)all.add(p);else all[index]=p;
-              next['products']=all;
-              await repo.save(next);
-              if(d.mounted)Navigator.pop(d);
-            });
-          },child:const Text('Save product')),
-        ],
-      )));
-    } finally {
-      for(final controller in controllers){controller.dispose();}
-    }
+    final product=await showDialog<Obj>(
+      context:c,
+      builder:(dialogContext)=>_ProductEditorDialog(
+        existing:existing,
+        pickPhoto:photo,
+      ),
+    );
+    if(product==null||!c.mounted)return;
+    await perform(c,()async{
+      final next=clone(s),all=objects(next['products']);
+      final index=all.indexWhere((item)=>item['id']==product['id']);
+      if(index<0)all.add(product);else all[index]=product;
+      next['products']=all;
+      await repo.save(next);
+    },message:'Product saved. Historical records retained.');
   }
 
   Widget field(TextEditingController controller,String label,{bool number=false,bool password=false,int? maxLength,ValueChanged<String>? onChanged})=>Padding(padding:const EdgeInsets.symmetric(vertical:7),child:TextField(controller:controller,obscureText:password,maxLength:maxLength,onChanged:onChanged,keyboardType:number?const TextInputType.numberWithOptions(decimal:true):TextInputType.text,decoration:InputDecoration(labelText:label)));
@@ -560,4 +502,214 @@ class _PurchaseLineDraft {
   final additional=TextEditingController(text:'0.00');
   final gst=TextEditingController(text:'0.00');
   _PurchaseLineDraft(this.productId);
+}
+
+
+/// Owns its text controllers for exactly as long as the dialog is mounted.
+/// showDialog's result can complete while the route is still animating out;
+/// keeping controllers in State prevents disposing them during that transition.
+class _ProductEditorDialog extends StatefulWidget {
+  final Obj? existing;
+  final Future<Obj?> Function(BuildContext) pickPhoto;
+  const _ProductEditorDialog({required this.existing,required this.pickPhoto});
+
+  @override
+  State<_ProductEditorDialog> createState()=>_ProductEditorDialogState();
+}
+
+class _ProductEditorDialogState extends State<_ProductEditorDialog> {
+  late final TextEditingController name;
+  late final TextEditingController category;
+  late final TextEditingController variant;
+  late final TextEditingController cost;
+  late final TextEditingController price;
+  late final TextEditingController deal;
+  late final TextEditingController minimum;
+  late final TextEditingController barcode;
+  Obj? image;
+
+  @override
+  void initState() {
+    super.initState();
+    final p=widget.existing;
+    name=TextEditingController(text:p?['name'] ?? '');
+    category=TextEditingController(text:p?['category'] ?? '');
+    variant=TextEditingController(text:p?['variant'] ?? '');
+    cost=TextEditingController(text:p!=null&&p['purchaseCost']==null?'':amount(p?['purchaseCost'] ?? 0));
+    price=TextEditingController(text:p!=null&&p['sellingPrice']==null?'':amount(p?['sellingPrice'] ?? 0));
+    deal=TextEditingController(text:p?['twoItemPrice']==null?'':amount(p!['twoItemPrice']));
+    minimum=TextEditingController(text:'${p?['minimum'] ?? 0}');
+    barcode=TextEditingController(text:p?['barcode'] ?? '');
+    image=p?['photo']==null?null:obj(p!['photo']);
+  }
+
+  @override
+  void dispose() {
+    for(final controller in [name,category,variant,cost,price,deal,minimum,barcode]) {
+      controller.dispose();
+    }
+    super.dispose();
+  }
+
+  Widget field(TextEditingController controller,String label,{bool number=false,int? maxLength})=>
+    Padding(
+      padding:const EdgeInsets.symmetric(vertical:7),
+      child:TextField(
+        controller:controller,
+        maxLength:maxLength,
+        keyboardType:number?const TextInputType.numberWithOptions(decimal:true):TextInputType.text,
+        decoration:InputDecoration(labelText:label),
+      ),
+    );
+
+  void save() {
+    try {
+      final p=widget.existing;
+      final product=<String,dynamic>{
+        ...?p,
+        'twoItemPrice':deal.text.trim().isEmpty?null:cents(deal.text),
+        'archived':p?['archived'] ?? false,
+        'id':p?['id'] ?? const Uuid().v4(),
+        'name':name.text.trim(),
+        'category':category.text.trim(),
+        'variant':variant.text.trim(),
+        'purchaseCost':cost.text.trim().isEmpty?null:cents(cost.text),
+        'sellingPrice':price.text.trim().isEmpty?null:cents(price.text),
+        'minimum':integer(int.parse(minimum.text),0,10000),
+        'barcode':barcode.text.trim(),
+        'photo':image,
+      };
+      Navigator.pop(context,product);
+    } catch(error) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('$error')));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context)=>AlertDialog(
+    title:Text(widget.existing==null?'Add product':'Edit product'),
+    content:SizedBox(
+      width:440,
+      child:SingleChildScrollView(
+        child:Column(mainAxisSize:MainAxisSize.min,children:[
+          field(name,'Product name',maxLength:120),
+          field(category,'Category',maxLength:80),
+          field(variant,'Variant (size, flavour, shade)',maxLength:120),
+          field(cost,'Default purchase cost per unit (AUD)',number:true),
+          field(price,'Selling price per unit (AUD)',number:true),
+          field(deal,'Optional 2-item deal TOTAL (AUD; blank disables)',number:true),
+          field(minimum,'Low-stock minimum',number:true),
+          field(barcode,'Barcode (leading zeros retained)',maxLength:80),
+          TextButton.icon(
+            onPressed:()async{
+              final code=await Navigator.push<String>(context,MaterialPageRoute(builder:(_)=>const Scanner()));
+              if(mounted&&code!=null)barcode.text=code;
+            },
+            icon:const Icon(Icons.qr_code_scanner),
+            label:const Text('Scan barcode'),
+          ),
+          TextButton.icon(
+            onPressed:()async{
+              try {
+                final picked=await widget.pickPhoto(context);
+                if(mounted&&picked!=null)setState(()=>image=picked);
+              } catch(error) {
+                if(mounted)ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('$error')));
+              }
+            },
+            icon:const Icon(Icons.photo_camera_outlined),
+            label:Text(image==null?'Add product photo':'Replace product photo'),
+          ),
+          if(image!=null)Image.memory(Uint8List.fromList(attachmentBytes(image!)),height:100),
+        ]),
+      ),
+    ),
+    actions:[
+      TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Cancel')),
+      FilledButton(onPressed:save,child:const Text('Save product')),
+    ],
+  );
+}
+
+
+class _MoneyEntryDialog extends StatefulWidget {
+  final String kind;
+  final int currentBalance;
+  const _MoneyEntryDialog({required this.kind,required this.currentBalance});
+
+  @override
+  State<_MoneyEntryDialog> createState()=>_MoneyEntryDialogState();
+}
+
+class _MoneyEntryDialogState extends State<_MoneyEntryDialog> {
+  late final TextEditingController amountController;
+  late final TextEditingController noteController;
+
+  @override
+  void initState() {
+    super.initState();
+    amountController=TextEditingController(
+      text:widget.kind=='recount'?amount(widget.currentBalance<0?0:widget.currentBalance):'',
+    );
+    noteController=TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    amountController.dispose();
+    noteController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context)=>AlertDialog(
+    title:Text(switch(widget.kind){
+      'add'=>'Add money',
+      'remove'=>'Take money out',
+      'recount'=>'Recount business funds',
+      _=>'Money entry',
+    }),
+    content:Column(mainAxisSize:MainAxisSize.min,children:[
+      TextField(
+        controller:amountController,
+        keyboardType:const TextInputType.numberWithOptions(decimal:true),
+        decoration:InputDecoration(
+          labelText:widget.kind=='recount'?'Actual amount counted (AUD)':'Amount (AUD)',
+        ),
+      ),
+      TextField(
+        controller:noteController,
+        decoration:const InputDecoration(labelText:'Note / reason (optional)'),
+      ),
+    ]),
+    actions:[
+      TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Cancel')),
+      FilledButton(
+        onPressed:(){
+          try {
+            final value=cents(amountController.text);
+            if(widget.kind!='recount'&&value<1) {
+              throw const FormatException('Enter an amount greater than zero.');
+            }
+            final delta=widget.kind=='add'
+              ?value
+              :widget.kind=='remove'
+                ?-value
+                :value-widget.currentBalance;
+            Navigator.pop(context,{
+              'id':const Uuid().v4(),
+              'type':widget.kind,
+              'amount':value,
+              'delta':delta,
+              'note':noteController.text.trim(),
+              'date':DateTime.now().millisecondsSinceEpoch,
+            });
+          } catch(error) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('$error')));
+          }
+        },
+        child:const Text('Save entry'),
+      ),
+    ],
+  );
 }
