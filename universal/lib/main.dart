@@ -669,7 +669,7 @@ class _MoneyEntryDialogState extends State<_MoneyEntryDialog> {
       'recount'=>'Recount business funds',
       _=>'Money entry',
     }),
-    content:Column(mainAxisSize:MainAxisSize.min,children:[
+    content:SingleChildScrollView(child:Column(mainAxisSize:MainAxisSize.min,children:[
       TextField(
         controller:amountController,
         keyboardType:const TextInputType.numberWithOptions(decimal:true),
@@ -681,7 +681,7 @@ class _MoneyEntryDialogState extends State<_MoneyEntryDialog> {
         controller:noteController,
         decoration:const InputDecoration(labelText:'Note / reason (optional)'),
       ),
-    ]),
+    ])),
     actions:[
       TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Cancel')),
       FilledButton(
