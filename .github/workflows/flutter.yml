@@ -137,7 +137,7 @@ jobs:
           mkdir -p dist
           cp "$apk" dist/Business-Tracker-2.3.4.apk
           cp signing-verification.txt apk-verification.txt oauth-verification.txt dist/
-          cd dist && sha256sum Business-Tracker-2.3.3.apk > SHA256SUMS.txt
+          cd dist && sha256sum Business-Tracker-2.3.4.apk > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         if: success()
         with:
