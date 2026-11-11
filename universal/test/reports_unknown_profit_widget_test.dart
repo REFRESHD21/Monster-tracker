@@ -76,7 +76,13 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
-      expect(find.textContaining('Product profit Incomplete'), findsOneWidget);
+      final incompleteProfit=find.textContaining('Product profit Incomplete');
+      await tester.scrollUntilVisible(
+        incompleteProfit,
+        240,
+        scrollable:find.byType(Scrollable).first,
+      );
+      expect(incompleteProfit, findsOneWidget);
       expect(tester.takeException(), isNull);
     } finally {
       await tester.pumpWidget(const SizedBox());
