@@ -49,7 +49,11 @@ void main(){
 
         tester.testTextInput.hide();
         await tester.pumpAndSettle();
-        await tester.ensureVisible(find.text('Recount'));
+        await tester.scrollUntilVisible(
+          find.text('Recount'),
+          180,
+          scrollable:find.byType(Scrollable).last,
+        );
         await tester.tap(find.text('Recount'));
         await tester.pumpAndSettle();
         await tester.enterText(find.byType(TextField).first,'15.00');
