@@ -25,6 +25,42 @@ void main(){
         await repo.append(event(id:'device-refund-001',type:'refund',target:'device-sale-00001',revenue:555));
         await repo.append(event(id:'device-return-001',type:'return',target:'device-sale-00001',quantity:1));
         await exerciseProductFlow(tester,repo,screenshot:(_)async{});
+
+        // Exercise the balance adjustment and recount dialogs at a
+        // realistic phone viewport after the compact product-editor flow.
+        tester.view.physicalSize = const Size(420, 900);
+        await tester.pump();
+        await tester.tap(find.descendant(
+          of:find.byType(NavigationBar),
+          matching:find.text('Home'),
+        ));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Manage money').first);
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Add money'));
+        await tester.pumpAndSettle();
+        final balanceBeforeAdjustment=objects(repo.state['moneyEntries']).fold<int>(
+          0,(sum,entry)=>sum+(entry['delta'] as int),
+        );
+        await tester.enterText(find.byType(TextField).first,'10.00');
+        await tester.tap(find.text('Save entry'));
+        await tester.pumpAndSettle();
+        expect(objects(repo.state['moneyEntries']).fold<int>(
+          0,(sum,entry)=>sum+(entry['delta'] as int),
+        ),balanceBeforeAdjustment+1000);
+
+        tester.testTextInput.hide();
+        await tester.pumpAndSettle();
+        await tester.ensureVisible(find.text('Recount'));
+        await tester.tap(find.text('Recount'));
+        await tester.pumpAndSettle();
+        await tester.enterText(find.byType(TextField).first,'15.00');
+        await tester.tap(find.text('Save entry'));
+        await tester.pumpAndSettle();
+        expect(objects(repo.state['moneyEntries']).fold<int>(
+          0,(sum,entry)=>sum+(entry['delta'] as int),
+        ),1500);
+
       } finally {
         await tester.pumpWidget(const SizedBox());await tester.pumpAndSettle();
         await repo.close();await folder.delete(recursive:true);

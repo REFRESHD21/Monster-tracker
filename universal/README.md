@@ -1,4 +1,4 @@
-# Business Tracker 2.3.3 (20)
+# Business Tracker 2.3.4 (21)
 
 This release adds a persisted **Business Funds** ledger to the Flutter app. Cash
 and card sale proceeds increase funds by the recorded revenue less recorded
@@ -8,6 +8,8 @@ twice; undoing a paid sale reverses its funds entry. Manual Add money, Take out
 and Recount actions remain available, and stock purchases reduce funds only
 when the purchase form's funds checkbox is enabled.
 
+Optional **Business Funds cloud sync** connects this app's existing append-only money ledger to the JTC Drinks Supabase project. Sign in under Settings → Cloud Business Funds with the same authorised admin account used on the website. The first connection registers this installation and uploads its existing funds history before reading the cloud balance. Later syncs send only missing entry IDs and pull Gemini/admin adjustments back into the local ledger. The app remains offline-first; only `moneyEntries` are shared, not product stock, receipts, customers, sales details or the rest of the database. While connected, sync is retried on app open/resume, after saves and every two minutes while the app is open. Cloud sync requires internet and an authorised admin login; local records continue to work offline. A history conflict stops the sync rather than overwriting an entry. The authenticated server-side Gemini function contract is documented in [GEMINI_BUSINESS_FUNDS.md](GEMINI_BUSINESS_FUNDS.md); a Gemini client still needs to register the function and call it with the active admin session.
+
 The sale cart supports an opt-in **mix-and-match pair deal** for individual
 products, including different drink flavours. The default pair total is AUD
 $6.00 and can be edited in the sale sheet. Every two individual cans receive
@@ -16,7 +18,7 @@ Bundles are excluded from pair pricing. The saved sale total is the amount
 entered/confirmed at sale time; historical sale totals are not repriced.
 
 Android package remains `au.monster.tracker.plus`; this update uses
-versionCode **20** and versionName **2.3.3**. Export a full backup before
+versionCode **21** and versionName **2.3.4**. Export a full backup before
 installing an update, and install over the existing app rather than uninstalling
 it so local records are retained. GitHub Actions verifies the release artifact's
 package, version, signing certificate and non-debuggable status before upload.

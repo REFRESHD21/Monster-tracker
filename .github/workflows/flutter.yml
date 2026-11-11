@@ -1,9 +1,9 @@
 name: Universal tracker
 on:
   push:
-    branches: ['feature/flutter-universal-tracker', 'development/toggleable-business-modules', 'feature/sale-funds-mix-match']
+    branches: ['feature/flutter-universal-tracker', 'development/toggleable-business-modules', 'feature/sale-funds-mix-match', 'feature/business-funds-cloud-sync']
   pull_request:
-    branches: ['feature/sheets-compatible-update', 'development/toggleable-business-modules']
+    branches: ['main', 'feature/sheets-compatible-update', 'development/toggleable-business-modules']
   workflow_dispatch:
 permissions:
   contents: read
@@ -109,6 +109,8 @@ jobs:
       - run: python3 scripts/flutter/bootstrap.py
       - working-directory: universal
         run: flutter build apk --release --dart-define-from-file=config/google-oauth.json && flutter build apk --debug --dart-define-from-file=config/google-oauth.json
+      - name: Validate Android device-check shell syntax
+        run: bash -n scripts/flutter/device-check.sh
       - name: Enable emulator acceleration
         run: sudo chmod 666 /dev/kvm
       - uses: reactivecircus/android-emulator-runner@v2
@@ -128,14 +130,14 @@ jobs:
           expected=$(sha256sum /tmp/compatible.der | cut -d' ' -f1)
           grep -F "Signer #1 certificate SHA-256 digest: $expected" signing-verification.txt
           "$tools/aapt" dump badging "$apk" | tee apk-verification.txt
-          grep -F "package: name='au.monster.tracker.plus' versionCode='20'" apk-verification.txt
+          grep -F "package: name='au.monster.tracker.plus' versionCode='21'" apk-verification.txt
           ! grep -q application-debuggable apk-verification.txt
           unzip -tq "$apk"
           python3 scripts/flutter/verify-oauth-apk.py "$apk" | tee oauth-verification.txt
           mkdir -p dist
-          cp "$apk" dist/Business-Tracker-2.3.3.apk
+          cp "$apk" dist/Business-Tracker-2.3.4.apk
           cp signing-verification.txt apk-verification.txt oauth-verification.txt dist/
-          cd dist && sha256sum Business-Tracker-2.3.3.apk > SHA256SUMS.txt
+          cd dist && sha256sum Business-Tracker-2.3.4.apk > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         if: success()
         with:
