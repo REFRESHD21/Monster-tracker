@@ -87,12 +87,12 @@ void main() {
       if(reportException!=null) {
         debugPrint('REPORT_WIDGET_EXCEPTION: $reportException');
         final renderTree=tester.binding.renderView.toStringDeep();
-        final renderLines=renderTree.split('\\n');
+        final renderLines=renderTree.split('\n');
         for(var index=0;index<renderLines.length;index++) {
           if(renderLines[index].contains('OVERFLOWING')) {
             final first=index>5?index-5:0;
             final last=(index+25<renderLines.length)?index+25:renderLines.length;
-            debugPrint(renderLines.sublist(first,last).join('\\n'));
+            debugPrint(renderLines.sublist(first,last).join('\n'));
           }
         }
       }
