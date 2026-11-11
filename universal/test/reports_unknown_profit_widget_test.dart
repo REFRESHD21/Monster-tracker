@@ -83,7 +83,11 @@ void main() {
         scrollable:find.byType(Scrollable).first,
       );
       expect(incompleteProfit, findsOneWidget);
-      expect(tester.takeException(), isNull);
+      final reportException=tester.takeException();
+      if(reportException!=null) {
+        debugPrint('REPORT_WIDGET_EXCEPTION: $reportException');
+      }
+      expect(reportException, isNull);
     } finally {
       await tester.pumpWidget(const SizedBox());
       await tester.pump();
