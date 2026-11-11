@@ -43,14 +43,14 @@ class _StartupState extends State<Startup> {
   });
 }
 class TrackerApp extends StatefulWidget {
-  final Repository repository; final Future<Uint8List?> Function()? pickBackupBytes; const TrackerApp({super.key,required this.repository,this.pickBackupBytes});
+  final Repository repository; final Future<Uint8List?> Function()? pickBackupBytes; final bool enableAutomaticWork; const TrackerApp({super.key,required this.repository,this.pickBackupBytes,this.enableAutomaticWork=true});
   @override State<TrackerApp> createState()=>_TrackerAppState();
 }
 class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
   int tab=0;bool archivedView=false,saleOpen=false;bool busy=false;bool syncing=false;String query='',period='all',productSort='revenue';DateTimeRange? customDates;Timer? autoTimer;String syncStatus='';String fundsSyncStatus='';
   Repository get repo=>widget.repository;Obj get s=>repo.state;
   Accounts get accounts=>validateState(s);
-  @override void initState(){super.initState();WidgetsBinding.instance.addObserver(this);autoTimer=Timer.periodic(const Duration(minutes:2),(_)=>automatic());Future.microtask(automatic);}
+  @override void initState(){super.initState();WidgetsBinding.instance.addObserver(this);if(widget.enableAutomaticWork){autoTimer=Timer.periodic(const Duration(minutes:2),(_)=>automatic());Future.microtask(automatic);}}
   @override void dispose(){WidgetsBinding.instance.removeObserver(this);autoTimer?.cancel();super.dispose();}
   @override void didChangeAppLifecycleState(AppLifecycleState state){if(state==AppLifecycleState.resumed)automatic();}
   Future<void> automatic() async {if(busy || syncing)return;syncing=true;try {if(await BusinessFundsCloud.connected){try{await BusinessFundsCloud.sync(repo);if(mounted)setState((){});}catch(_){}}try{await Sheets.initializeConnection();if(await secrets.read(key:'sheets-auto')=='true')await Sheets.upload(s);}catch(_){}await refreshSyncStatus();await refreshFundsSyncStatus();final p=await secrets.read(key:'backup-password'),every=await secrets.read(key:'backup-frequency'),last=int.tryParse(await secrets.read(key:'backup-last') ?? '0') ?? 0;if(p!=null && every!=null && DateTime.now().millisecondsSinceEpoch-last>(every=='weekly'?7:1)*86400000){await Backups.recovery(s,p);await secrets.write(key:'backup-last',value:'${DateTime.now().millisecondsSinceEpoch}');}}catch(_){}finally{syncing=false;} }
@@ -80,21 +80,17 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
   List<Obj> get moneyEntries=>objects(s['moneyEntries']??const <dynamic>[]);
   int get businessBalance=>moneyEntries.fold<int>(0,(sum,e)=>sum+(e['delta'] as int? ?? 0));
   Future<void> moneyAction(BuildContext c,String kind,{StateSetter? refresh}) async {
-    final current=businessBalance;
-    final amountController=TextEditingController(text:kind=='recount'?amount(current<0?0:current):''),noteController=TextEditingController();
-    final result=await showDialog<Obj>(context:c,builder:(d)=>AlertDialog(
-      title:Text(switch(kind){'add'=>'Add money','remove'=>'Take money out','recount'=>'Recount business funds',_=>'Money entry'}),
-      content:Column(mainAxisSize:MainAxisSize.min,children:[
-        TextField(controller:amountController,keyboardType:const TextInputType.numberWithOptions(decimal:true),decoration:InputDecoration(labelText:kind=='recount'?'Actual amount counted (AUD)':'Amount (AUD)')),
-        TextField(controller:noteController,decoration:const InputDecoration(labelText:'Note / reason (optional)')),
-      ]),
-      actions:[
-        TextButton(onPressed:()=>Navigator.pop(d),child:const Text('Cancel')),
-        FilledButton(onPressed:(){try{final n=cents(amountController.text);if(kind!='recount'&&n<1)throw const FormatException('Enter an amount greater than zero.');final delta=kind=='add'?n:kind=='remove'?-n:n-current;Navigator.pop(d,{'id':const Uuid().v4(),'type':kind,'amount':n,'delta':delta,'note':noteController.text.trim(),'date':DateTime.now().millisecondsSinceEpoch});}catch(e){ScaffoldMessenger.of(c).showSnackBar(SnackBar(content:Text('${e}')));}},child:const Text('Save entry')),
-      ]));
-    amountController.dispose();noteController.dispose();
+    final result=await showDialog<Obj>(
+      context:c,
+      builder:(dialogContext)=>_MoneyEntryDialog(kind:kind,currentBalance:businessBalance),
+    );
     if(result==null||!c.mounted)return;
-    await perform(c,()async{final next=clone(s);final entries=(next['moneyEntries']??=<dynamic>[]) as List;entries.add(result);await repo.save(next);},message:kind=='recount'?'Recount saved. Previous entries retained.':'Money entry saved.');
+    await perform(c,()async{
+      final next=clone(s);
+      final entries=(next['moneyEntries']??=<dynamic>[]) as List;
+      entries.add(result);
+      await repo.save(next);
+    },message:kind=='recount'?'Recount saved. Previous entries retained.':'Money entry saved.');
     if(refresh!=null)refresh((){});
   }
   Future<void> moneyManagement(BuildContext c) async {
@@ -631,6 +627,89 @@ class _ProductEditorDialogState extends State<_ProductEditorDialog> {
     actions:[
       TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Cancel')),
       FilledButton(onPressed:save,child:const Text('Save product')),
+    ],
+  );
+}
+
+
+class _MoneyEntryDialog extends StatefulWidget {
+  final String kind;
+  final int currentBalance;
+  const _MoneyEntryDialog({required this.kind,required this.currentBalance});
+
+  @override
+  State<_MoneyEntryDialog> createState()=>_MoneyEntryDialogState();
+}
+
+class _MoneyEntryDialogState extends State<_MoneyEntryDialog> {
+  late final TextEditingController amountController;
+  late final TextEditingController noteController;
+
+  @override
+  void initState() {
+    super.initState();
+    amountController=TextEditingController(
+      text:widget.kind=='recount'?amount(widget.currentBalance<0?0:widget.currentBalance):'',
+    );
+    noteController=TextEditingController();
+  }
+
+  @override
+  void dispose() {
+    amountController.dispose();
+    noteController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context)=>AlertDialog(
+    title:Text(switch(widget.kind){
+      'add'=>'Add money',
+      'remove'=>'Take money out',
+      'recount'=>'Recount business funds',
+      _=>'Money entry',
+    }),
+    content:Column(mainAxisSize:MainAxisSize.min,children:[
+      TextField(
+        controller:amountController,
+        keyboardType:const TextInputType.numberWithOptions(decimal:true),
+        decoration:InputDecoration(
+          labelText:widget.kind=='recount'?'Actual amount counted (AUD)':'Amount (AUD)',
+        ),
+      ),
+      TextField(
+        controller:noteController,
+        decoration:const InputDecoration(labelText:'Note / reason (optional)'),
+      ),
+    ]),
+    actions:[
+      TextButton(onPressed:()=>Navigator.pop(context),child:const Text('Cancel')),
+      FilledButton(
+        onPressed:(){
+          try {
+            final value=cents(amountController.text);
+            if(widget.kind!='recount'&&value<1) {
+              throw const FormatException('Enter an amount greater than zero.');
+            }
+            final delta=widget.kind=='add'
+              ?value
+              :widget.kind=='remove'
+                ?-value
+                :value-widget.currentBalance;
+            Navigator.pop(context,{
+              'id':const Uuid().v4(),
+              'type':widget.kind,
+              'amount':value,
+              'delta':delta,
+              'note':noteController.text.trim(),
+              'date':DateTime.now().millisecondsSinceEpoch,
+            });
+          } catch(error) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content:Text('$error')));
+          }
+        },
+        child:const Text('Save entry'),
+      ),
     ],
   );
 }
