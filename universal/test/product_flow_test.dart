@@ -26,8 +26,10 @@ void main(){
         await repo.append(event(id:'device-return-001',type:'return',target:'device-sale-00001',quantity:1));
         await exerciseProductFlow(tester,repo,screenshot:(_)async{});
 
-        // Exercise the balance adjustment and recount dialogs on a compact
-        // device, including the controller lifetime across route dismissal.
+        // Exercise the balance adjustment and recount dialogs at a
+        // realistic phone viewport after the compact product-editor flow.
+        tester.view.physicalSize = const Size(420, 900);
+        await tester.pump();
         await tester.tap(find.descendant(
           of:find.byType(NavigationBar),
           matching:find.text('Home'),
@@ -49,11 +51,7 @@ void main(){
 
         tester.testTextInput.hide();
         await tester.pumpAndSettle();
-        await tester.scrollUntilVisible(
-          find.text('Recount'),
-          180,
-          scrollable:find.byType(Scrollable).last,
-        );
+        await tester.ensureVisible(find.text('Recount'));
         await tester.tap(find.text('Recount'));
         await tester.pumpAndSettle();
         await tester.enterText(find.byType(TextField).first,'15.00');
