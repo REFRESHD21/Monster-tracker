@@ -94,26 +94,69 @@ class _TrackerAppState extends State<TrackerApp> with WidgetsBindingObserver {
     if(refresh!=null)refresh((){});
   }
   Future<void> moneyManagement(BuildContext c) async {
-    await showModalBottomSheet<void>(context:c,isScrollControlled:true,showDragHandle:true,builder:(b)=>StatefulBuilder(builder:(b,update){
-      final entries=moneyEntries;final balance=businessBalance;
-      return SafeArea(child:Padding(padding:const EdgeInsets.fromLTRB(20,8,20,20),child:SizedBox(height:MediaQuery.sizeOf(b).height*.78,child:Column(crossAxisAlignment:CrossAxisAlignment.stretch,children:[
-        Text('Business money',style:Theme.of(b).textTheme.headlineSmall),const SizedBox(height:8),
-        Text(money(balance),style:Theme.of(b).textTheme.headlineLarge?.copyWith(fontWeight:FontWeight.w800)),
-        const Text('Paid cash and card sales are added automatically, net of recorded fees. IOUs are not counted until money is actually received. Recount records the difference without rewriting earlier entries.'),
-        const SizedBox(height:12),
-        Wrap(spacing:8,runSpacing:8,children:[
-          FilledButton.icon(onPressed:()=>moneyAction(c,'add',refresh:update),icon:const Icon(Icons.add),label:const Text('Add money')),
-          OutlinedButton.icon(onPressed:()=>moneyAction(c,'remove',refresh:update),icon:const Icon(Icons.remove),label:const Text('Take out')),
-          OutlinedButton.icon(onPressed:()=>moneyAction(c,'recount',refresh:update),icon:const Icon(Icons.calculate_outlined),label:const Text('Recount')),
-        ]),
-        const Divider(height:24),const Text('Recent entries',style:TextStyle(fontWeight:FontWeight.w700)),const SizedBox(height:8),
-        Expanded(child:entries.isEmpty?const Center(child:Text('No money entries yet. Record a sale or recount your starting funds.')):ListView(children:entries.reversed.take(100).map((e){
-          final delta=e['delta'] as int? ?? 0;final kind=e['type'];
-          final label=switch(kind){'recount'=>'Recount · counted ${money(e['amount'] as int)}','sale'=>'Sale proceeds','refund'=>'Refund paid','correction'=>'Sale reversed','add'=>'Money added','remove'=>'Money taken out','restock'=>'Stock purchase',_=>'Funds movement'};
-          return ListTile(contentPadding:EdgeInsets.zero,leading:Icon(kind=='recount'?Icons.calculate_outlined:delta<0?Icons.arrow_upward:Icons.arrow_downward),title:Text(e['note'] as String? ?? label),subtitle:Text('${displayDate(e['date'] as int?)} · $label'),trailing:Text('${delta>0?'+':''}${money(delta)}',style:TextStyle(fontWeight:FontWeight.w700,color:delta<0?Theme.of(b).colorScheme.error:Theme.of(b).colorScheme.primary)));
-        }).toList())),
-      ]))));
-    }));
+    await showModalBottomSheet<void>(
+      context:c,
+      isScrollControlled:true,
+      showDragHandle:true,
+      builder:(b)=>StatefulBuilder(builder:(b,update){
+        final entries=moneyEntries;
+        final balance=businessBalance;
+        return SafeArea(
+          child:SizedBox(
+            height:MediaQuery.sizeOf(b).height*.78,
+            child:ListView(
+              padding:const EdgeInsets.fromLTRB(20,8,20,20),
+              children:[
+                Text('Business money',style:Theme.of(b).textTheme.headlineSmall),
+                const SizedBox(height:8),
+                Text(money(balance),style:Theme.of(b).textTheme.headlineLarge?.copyWith(fontWeight:FontWeight.w800)),
+                const Text('Paid cash and card sales are added automatically, net of recorded fees. IOUs are not counted until money is actually received. Recount records the difference without rewriting earlier entries.'),
+                const SizedBox(height:12),
+                Wrap(spacing:8,runSpacing:8,children:[
+                  FilledButton.icon(onPressed:()=>moneyAction(c,'add',refresh:update),icon:const Icon(Icons.add),label:const Text('Add money')),
+                  OutlinedButton.icon(onPressed:()=>moneyAction(c,'remove',refresh:update),icon:const Icon(Icons.remove),label:const Text('Take out')),
+                  OutlinedButton.icon(onPressed:()=>moneyAction(c,'recount',refresh:update),icon:const Icon(Icons.calculate_outlined),label:const Text('Recount')),
+                ]),
+                const Divider(height:24),
+                const Text('Recent entries',style:TextStyle(fontWeight:FontWeight.w700)),
+                const SizedBox(height:8),
+                if(entries.isEmpty)
+                  const Padding(
+                    padding:EdgeInsets.symmetric(vertical:24),
+                    child:Center(child:Text('No money entries yet. Record a sale or recount your starting funds.')),
+                  )
+                else
+                  for(final e in entries.reversed.take(100))
+                    Builder(builder:(context){
+                      final delta=e['delta'] as int? ?? 0;
+                      final kind=e['type'];
+                      final label=switch(kind){
+                        'recount'=>'Recount · counted ${money(e['amount'] as int)}',
+                        'sale'=>'Sale proceeds',
+                        'refund'=>'Refund paid',
+                        'correction'=>'Sale reversed',
+                        'add'=>'Money added',
+                        'remove'=>'Money taken out',
+                        'restock'=>'Stock purchase',
+                        _=>'Funds movement',
+                      };
+                      return ListTile(
+                        contentPadding:EdgeInsets.zero,
+                        leading:Icon(kind=='recount'?Icons.calculate_outlined:delta<0?Icons.arrow_upward:Icons.arrow_downward),
+                        title:Text(e['note'] as String? ?? label),
+                        subtitle:Text('${displayDate(e['date'] as int?)} · $label'),
+                        trailing:Text(
+                          '${delta>0?'+':''}${money(delta)}',
+                          style:TextStyle(fontWeight:FontWeight.w700,color:delta<0?Theme.of(b).colorScheme.error:Theme.of(b).colorScheme.primary),
+                        ),
+                      );
+                    }),
+              ],
+            ),
+          ),
+        );
+      }),
+    );
   }
 
   List<Widget> home(BuildContext c) {
