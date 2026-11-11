@@ -19,13 +19,16 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
     FlutterSecureStorage.setMockInitialValues({});
 
-    sqfliteFfiInit();
-    databaseFactory = databaseFactoryFfiNoIsolate;
-    final folder = await Directory.systemTemp.createTemp('tracker-reports-null-profit-');
-    await databaseFactory.setDatabasesPath(folder.path);
-    final repo = await Repository.open();
+    late Repository repo;
+    late Directory folder;
+    // SQLite/file operations must run outside the widget test's fake clock.
+    await tester.runAsync(() async {
+      sqfliteFfiInit();
+      databaseFactory = databaseFactoryFfiNoIsolate;
+      folder = await Directory.systemTemp.createTemp('tracker-reports-null-profit-');
+      await databaseFactory.setDatabasesPath(folder.path);
+      repo = await Repository.open();
 
-    try {
       final next = clone(repo.state);
       next['products'] = [
         {
@@ -57,17 +60,19 @@ void main() {
         revenue: 350,
         payment: 'cash',
       ));
+    });
 
+    try {
       expect(
         objects(validateState(repo.state).salesProfit(objects(repo.state['products']))['products']).single['profit'],
         isNull,
       );
 
-      await tester.pumpWidget(TrackerApp(repository: repo));
-      await tester.pump(const Duration(milliseconds: 100));
+      // Disable optional background sync/timers: this test is about report
+      // rendering, not Workmanager, Sheets or cloud-account initialization.
+      await tester.pumpWidget(TrackerApp(repository: repo, enableAutomaticWork: false));
+      await tester.pump();
       await tester.tap(find.text('Reports').last);
-      // TrackerApp performs background sync checks and has periodic work; avoid
-      // pumpAndSettle waiting indefinitely for unrelated scheduled frames.
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 300));
 
@@ -76,8 +81,11 @@ void main() {
     } finally {
       await tester.pumpWidget(const SizedBox());
       await tester.pump();
-      await repo.close();
-      await folder.delete(recursive: true);
+      await tester.runAsync(() async {
+        await repo.close();
+        await folder.delete(recursive: true);
+      });
     }
   });
+
 }
