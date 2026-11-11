@@ -1,0 +1,25 @@
+name: Android device-check script validation
+on:
+  push:
+    branches: ['feature/business-funds-cloud-sync']
+    paths:
+      - 'scripts/flutter/device-check.sh'
+      - '.github/workflows/device-check-lint.yml'
+  pull_request:
+    paths:
+      - 'scripts/flutter/device-check.sh'
+      - '.github/workflows/device-check-lint.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  shell-validation:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+      - name: Validate Android device-check shell syntax
+        run: bash -n scripts/flutter/device-check.sh
+      - name: Check patch whitespace
+        run: git diff --check
