@@ -37,12 +37,15 @@ void main(){
         await tester.pumpAndSettle();
         await tester.tap(find.text('Add money'));
         await tester.pumpAndSettle();
+        final balanceBeforeAdjustment=objects(repo.state['moneyEntries']).fold<int>(
+          0,(sum,entry)=>sum+(entry['delta'] as int),
+        );
         await tester.enterText(find.byType(TextField).first,'10.00');
         await tester.tap(find.text('Save entry'));
         await tester.pumpAndSettle();
         expect(objects(repo.state['moneyEntries']).fold<int>(
           0,(sum,entry)=>sum+(entry['delta'] as int),
-        ),1000);
+        ),balanceBeforeAdjustment+1000);
 
         await tester.tap(find.text('Recount'));
         await tester.pumpAndSettle();
