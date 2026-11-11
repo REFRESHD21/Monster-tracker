@@ -1,4 +1,4 @@
-# Business Tracker 2.3.3 (20)
+# Business Tracker 2.3.4 (21)
 
 This release adds a persisted **Business Funds** ledger to the Flutter app. Cash
 and card sale proceeds increase funds by the recorded revenue less recorded
@@ -18,7 +18,7 @@ Bundles are excluded from pair pricing. The saved sale total is the amount
 entered/confirmed at sale time; historical sale totals are not repriced.
 
 Android package remains `au.monster.tracker.plus`; this update uses
-versionCode **20** and versionName **2.3.3**. Export a full backup before
+versionCode **21** and versionName **2.3.4**. Export a full backup before
 installing an update, and install over the existing app rather than uninstalling
 it so local records are retained. GitHub Actions verifies the release artifact's
 package, version, signing certificate and non-debuggable status before upload.
